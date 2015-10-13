@@ -14,7 +14,7 @@ Online documentation https://github.com/Huawei-Spark/Spark-SQL-on-HBase/blob/mas
 
 ## Requirements
 
-This version of 1.0.0 requires Spark 1.4.0.
+This version of 1.0.0 requires Spark 1.4.0,HBase 0.98
 
 ## Building Spark HBase
 
@@ -22,12 +22,12 @@ Spark HBase is built using [Apache Maven](http://maven.apache.org/).
 
 I. Clone and build Huawei-Spark/Spark-SQL-on-HBase
 ```
-$ git clone https://github.com/Huawei-Spark/Spark-SQL-on-HBase spark-hbase
+$ git clone https://github.com/HuaweiBigData/astro
 ```
 
 II. Go to the root of the source tree
 ```
-$ cd spark-hbase
+$ cd astro
 ```
 
 III. Build the project
