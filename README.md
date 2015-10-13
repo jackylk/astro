@@ -1,4 +1,4 @@
-Please feel free to ask any questions or queries through "issues" label of "https://github.com/HuaweiBigData/astro" if you are interested in this project. And very welcome to participate in contribution on this project which is 100% open for everyone.
+Please feel free to ask any questions or queries through "issues" item of "https://github.com/HuaweiBigData/astro" if you are interested in this project. And very welcome to participate in contribution on this project which is 100% open for everyone.
 
 ## Astro: Fast SQL on HBase using SparkSQL
 
