@@ -12,7 +12,7 @@ We believe, as a unified big data processing engine, Spark is in good position t
 
 ## Online Documentation
 
-Online documentation https://github.com/Huawei-Spark/Spark-SQL-on-HBase/blob/master/doc/SparkSQLOnHBase_v2.2.docx
+Online documentation https://github.com/HuaweiBigData/astro/blob/master/doc/SparkSQLOnHBase_v2.2.docx
 
 ## Requirements
 
@@ -22,7 +22,7 @@ This version of 1.0.0 requires Spark 1.4.0,HBase 0.98
 
 Spark HBase is built using [Apache Maven](http://maven.apache.org/).
 
-I. Clone and build Huawei-Spark/Spark-SQL-on-HBase
+I. Clone and build HuaweiBigData/astro
 ```
 $ git clone https://github.com/HuaweiBigData/astro
 ```
