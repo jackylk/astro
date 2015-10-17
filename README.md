@@ -122,3 +122,7 @@ You can also make those setting to be the default by setting to the "Defaults ->
 
 Please refer to the [Configuration guide](http://spark.apache.org/docs/latest/configuration.html)
 in the online documentation for an overview on how to configure Spark.
+
+## Fork and Contribute
+This is an 100% open source project, we are always open to people who want to use the system or contribute to it. 
+This guide document introduce [how to contribute to Astro](https://github.com/HuaweiBigData/astro/wiki/How-to-contribute-to-Astro).
