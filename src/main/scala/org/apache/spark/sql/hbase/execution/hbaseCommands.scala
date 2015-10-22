@@ -41,7 +41,7 @@ import org.apache.spark.sql.types._
 import org.apache.spark.{Logging, SerializableWritable, SparkEnv, TaskContext}
 
 import scala.collection.mutable.ArrayBuffer
-
+import java.util.UUID
 @DeveloperApi
 case class AlterDropColCommand(tableName: String, columnName: String) extends RunnableCommand {
 
@@ -156,7 +156,7 @@ case class BulkLoadIntoTableCommand(
   with SparkHadoopMapReduceUtil
   with Logging {
 
-  override def run(sqlContext: SQLContext) = {
+  override def run(sqlContext: SQLContext):Seq[Row] = {
     @transient val solvedRelation = sqlContext.catalog.lookupRelation(Seq(tableName))
     @transient val relation: HBaseRelation = solvedRelation.asInstanceOf[Subquery]
       .child.asInstanceOf[LogicalRelation]
@@ -171,11 +171,29 @@ case class BulkLoadIntoTableCommand(
     job.getConfiguration.set("mapreduce.output.fileoutputformat.outputdir", tmpPath)
 
     @transient val conf = job.getConfiguration
-
+     var tempHdfsFilePath: Path = null
+     val hfileSystem = FileSystem.get(conf)
     @transient val hadoopReader = if (isLocal) {
-      val fs = FileSystem.getLocal(conf)
-      val pathString = fs.pathToFile(new Path(inputPath)).toURI.toURL.toString
-      new HadoopReader(sqlContext.sparkContext, pathString, delimiter)(relation)
+     val src = new Path(inputPath);
+     val tempUuid = UUID.randomUUID().toString
+     val tempdir = "/.---astro-temp-dir---.asrto/"
+
+     if (!hfileSystem.exists(new Path(tempdir))) {
+              hfileSystem.mkdirs(new Path(tempdir))
+           }
+     val destPath = tempdir + tempUuid
+
+      tempHdfsFilePath = new Path(destPath)
+     try {
+             hfileSystem.copyFromLocalFile(src, tempHdfsFilePath)
+            }
+     catch {
+              case e: Exception=> {
+              logError(s"File:$inputPath not found! Local input failed!", e)
+              return Seq.empty[Row]
+                     }
+                }
+      new HadoopReader(sqlContext.sparkContext, destPath, delimiter)(relation)
     } else {
       new HadoopReader(sqlContext.sparkContext, inputPath, delimiter)(relation)
     }
@@ -298,6 +316,12 @@ case class BulkLoadIntoTableCommand(
     relation.closeHTable()
     logDebug(s"finish BulkLoad on table ${relation.htable.getName}:" +
       s" ${System.currentTimeMillis()}")
+
+ //when insert from local file, the temp file in hdfs need to delete.
+    if (tempHdfsFilePath != null) {
+          hfileSystem.delete(tempHdfsFilePath, true)
+      }
+
     Seq.empty[Row]
   }
 
