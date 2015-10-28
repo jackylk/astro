@@ -23,7 +23,7 @@ import org.apache.hadoop.hbase.client.{Result, Scan, HTable}
 import org.apache.hadoop.hbase.util.Bytes
 import org.apache.spark.sql.hbase.KeyColumn
 import org.apache.spark.sql.hbase.util.{BinaryBytesUtils, HBaseKVHelper}
-import org.apache.spark.sql.types.{IntegerType, StringType, DoubleType}
+import org.apache.spark.sql.types.{DoubleType, IntegerType, StringType}
 
 /**
  * This example explains how to write data to Hbase table for Astro backend schema.
