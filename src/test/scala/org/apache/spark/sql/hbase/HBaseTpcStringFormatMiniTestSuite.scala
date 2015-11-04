@@ -261,13 +261,13 @@ class HBaseTpcStringFormatMiniTestSuite extends TestBase {
     // printRows(rows)
     assert(rows.length == 2)
 
-    assert(rows(0).get(0) == 16335)
-    assert(rows(0).get(1) == 10)
-    assert(rows(0).get(2) == 82.3499984741211)
+    assert(rows(0).get(0) == 12919)
+    assert(rows(0).get(1) == 30)
+    assert(rows(0).get(2) == 61.959999084472656)
 
-    assert(rows(1).get(0) == 12919)
-    assert(rows(1).get(1) == 30)
-    assert(rows(1).get(2) == 61.959999084472656)
+    assert(rows(1).get(0) == 16335)
+    assert(rows(1).get(1) == 10)
+    assert(rows(1).get(2) == 82.3499984741211)
   }
 
   test("Query 8") {
@@ -278,23 +278,24 @@ class HBaseTpcStringFormatMiniTestSuite extends TestBase {
          |avg(ss_wholesale_cost) as avg_wholesale_cost
          |FROM store_sales_stringformat
          |WHERE ss_item_sk > 1000 AND ss_item_sk < 18000
-         |GROUP BY ss_item_sk, ss_ticket_number"""
+         |GROUP BY ss_item_sk, ss_ticket_number
+         |ORDER BY ss_item_sk"""
         .stripMargin
     val rows = runSql(sql)
-    // printRows(rows)
+     printRows(rows)
     assert(rows.length == 5)
 
-    assert(rows(0).get(0) == 16335)
-    assert(rows(0).get(1) == 10)
-    assert(rows(0).get(2) == 82.35f)
-    assert(rows(0).get(2) == 82.35f)
-    assert(rows(0).get(2) == 82.3499984741211)
+    assert(rows(2).get(0) == 3163)
+    assert(rows(2).get(1) == 7)
+    assert(rows(2).get(2) == 69.53f)
+    assert(rows(2).get(2) == 69.53f)
+    assert(rows(2).get(2) == 69.52999877929688)
 
-    assert(rows(4).get(0) == 3163)
-    assert(rows(4).get(1) == 7)
-    assert(rows(4).get(2) == 69.53f)
-    assert(rows(4).get(2) == 69.53f)
-    assert(rows(4).get(2) == 69.52999877929688)
+    assert(rows(4).get(0) == 16335)
+    assert(rows(4).get(1) == 10)
+    assert(rows(4).get(2) == 82.35f)
+    assert(rows(4).get(2) == 82.35f)
+    assert(rows(4).get(2) == 82.3499984741211)
   }
 
   test("Query 9") {
@@ -528,7 +529,7 @@ class HBaseTpcStringFormatMiniTestSuite extends TestBase {
          |GROUP BY strkey, ss_item_sk, ss_ticket_number"""
         .stripMargin
     val rows = runSql(sql)
-    // printRows(rows)
+//    printRows(rows)
     assert(rows.length == 3)
 
     assert(rows(0).get(0) == "00707000000010")
@@ -536,14 +537,14 @@ class HBaseTpcStringFormatMiniTestSuite extends TestBase {
     assert(rows(0).get(2) == 10)
     assert(rows(0).get(3) == 1)
 
-    assert(rows(1).get(0) == "18669000000011")
-    assert(rows(1).get(1) == 18669)
-    assert(rows(1).get(2) == 11)
+    assert(rows(1).get(0) == "16335000000010")
+    assert(rows(1).get(1) == 16335)
+    assert(rows(1).get(2) == 10)
     assert(rows(1).get(3) == 1)
 
-    assert(rows(2).get(0) == "16335000000010")
-    assert(rows(2).get(1) == 16335)
-    assert(rows(2).get(2) == 10)
+    assert(rows(2).get(0) == "18669000000011")
+    assert(rows(2).get(1) == 18669)
+    assert(rows(2).get(2) == 11)
     assert(rows(2).get(3) == 1)
   }
 
@@ -564,15 +565,15 @@ class HBaseTpcStringFormatMiniTestSuite extends TestBase {
     assert(rows(0).get(2) == 10)
     assert(rows(0).get(3) == 10.260000228881836)
 
-    assert(rows(1).get(0) == "18669000000011")
-    assert(rows(1).get(1) == 18669)
-    assert(rows(1).get(2) == 11)
-    assert(rows(1).get(3) == 7.159999847412109)
+    assert(rows(1).get(0) == "16335000000010")
+    assert(rows(1).get(1) == 16335)
+    assert(rows(1).get(2) == 10)
+    assert(rows(1).get(3) == 82.3499984741211)
 
-    assert(rows(2).get(0) == "16335000000010")
-    assert(rows(2).get(1) == 16335)
-    assert(rows(2).get(2) == 10)
-    assert(rows(2).get(3) == 82.3499984741211)
+    assert(rows(2).get(0) == "18669000000011")
+    assert(rows(2).get(1) == 18669)
+    assert(rows(2).get(2) == 11)
+    assert(rows(2).get(3) == 7.159999847412109)
   }
 
 
