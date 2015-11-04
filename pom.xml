@@ -26,9 +26,9 @@
     <artifactId>apache</artifactId>
     <version>14</version>
   </parent>
-  <groupId>Astro</groupId>
-  <artifactId>astro-parent_2.10</artifactId>
-  <version>1.0.0</version>
+  <groupId>org.apache.astro</groupId>
+  <artifactId>astro-project</artifactId>
+  <version>0.1.0-SNAPSHOT</version>
   <packaging>jar</packaging>
   <name>Astro Project</name>
   <url>http://github.com/HuaweiBigData/astro</url>
