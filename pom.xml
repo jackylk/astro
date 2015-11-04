@@ -26,12 +26,19 @@
     <artifactId>apache</artifactId>
     <version>14</version>
   </parent>
-  <groupId>Huawei-Spark</groupId>
-  <artifactId>spark-sql-on-hbase</artifactId>
-  <version>1.0.0</version>
+  <groupId>org.apache.astro</groupId>
+  <artifactId>astro-project</artifactId>
+  <version>0.1.0-SNAPSHOT</version>
   <packaging>jar</packaging>
-  <name>Spark Project HBase</name>
-  <url>http://spark.apache.org/</url>
+  <name>Astro Project</name>
+  <url>http://github.com/HuaweiBigData/astro</url>
+  <licenses>
+    <license>
+      <name>Apache 2.0 License</name>
+      <url>http://www.apache.org/licenses/LICENSE-2.0.html</url>
+      <distribution>repo</distribution>
+    </license>
+  </licenses>
 
   <properties>
     <sbt.project.name>hbase</sbt.project.name>
