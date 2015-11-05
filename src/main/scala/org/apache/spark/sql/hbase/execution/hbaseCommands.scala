@@ -17,7 +17,7 @@
 package org.apache.spark.sql.hbase.execution
 
 import java.text.SimpleDateFormat
-import java.util.Date
+import java.util.{Date, UUID}
 
 import org.apache.hadoop.conf.Configurable
 import org.apache.hadoop.fs.{FileSystem, Path}
@@ -31,17 +31,16 @@ import org.apache.spark.annotation.DeveloperApi
 import org.apache.spark.mapreduce.SparkHadoopMapReduceUtil
 import org.apache.spark.sql._
 import org.apache.spark.sql.catalyst.expressions.{Attribute, Row}
-import org.apache.spark.sql.catalyst.plans.logical.Subquery
-import org.apache.spark.sql.execution.RunnableCommand
+import org.apache.spark.sql.catalyst.plans.logical.{LogicalPlan, Subquery}
+import org.apache.spark.sql.execution.{DescribeCommand => RunnableDescribeCommand, ExecutedCommand, RunnableCommand, SparkPlan}
 import org.apache.spark.sql.hbase.HBasePartitioner.HBaseRawOrdering
 import org.apache.spark.sql.hbase._
 import org.apache.spark.sql.hbase.util.{DataTypeUtils, Util}
-import org.apache.spark.sql.sources.LogicalRelation
+import org.apache.spark.sql.sources.{DescribeCommand, LogicalRelation}
 import org.apache.spark.sql.types._
 import org.apache.spark.{Logging, SerializableWritable, SparkEnv, TaskContext}
 
 import scala.collection.mutable.ArrayBuffer
-import java.util.UUID
 @DeveloperApi
 case class AlterDropColCommand(tableName: String, columnName: String) extends RunnableCommand {
 
@@ -99,28 +98,15 @@ case object ShowTablesCommand extends RunnableCommand {
 }
 
 @DeveloperApi
-case class DescribeTableCommand(tableName: String) extends RunnableCommand {
+case class DescribeTableCommand(table: HBaseRelation, override val output: Seq[Attribute])
+  extends RunnableCommand {
 
   def run(sqlContext: SQLContext): Seq[Row] = {
-    val buffer = new ArrayBuffer[Row]()
-    val relation = sqlContext.catalog.asInstanceOf[HBaseCatalog].getTable(tableName)
-    if (relation.isDefined) {
-      relation.get.allColumns.foreach {
-        case keyColumn: KeyColumn =>
-          buffer.append(Row(keyColumn.sqlName, keyColumn.dataType.toString,
-            "KEY COLUMN", keyColumn.order.toString))
-        case nonKeyColumn: NonKeyColumn =>
-          buffer.append(Row(nonKeyColumn.sqlName, nonKeyColumn.dataType.toString,
-            "NON KEY COLUMN", nonKeyColumn.family, nonKeyColumn.qualifier))
-      }
-      buffer.toSeq
-    } else {
-      sys.error(s"can not find table $tableName")
+    table.allColumns.map { field =>
+      val comment = if (field.isKeyColumn) "KEY COLUMN" else "NON KEY COLUMN"
+      Row(field.sqlName, field.dataType.simpleString, comment)
     }
   }
-
-  override def output: Seq[Attribute] =
-    StructType(Seq.fill(5)(StructField("", StringType))).toAttributes
 }
 
 @DeveloperApi
@@ -328,3 +314,19 @@ case class BulkLoadIntoTableCommand(
   override def output = Nil
 }
 
+@DeveloperApi
+case class HBaseCommandStrategy(context: HBaseSQLContext) extends Strategy {
+  def apply(plan: LogicalPlan): Seq[SparkPlan] = plan match {
+    case describe: DescribeCommand =>
+      val resultPlan = context.executePlan(describe.table).executedPlan
+      resultPlan match {
+        case t: HBaseSQLTableScan =>
+          ExecutedCommand(
+            DescribeTableCommand(t.relation, describe.output)) :: Nil
+        case _ =>
+          ExecutedCommand(RunnableDescribeCommand(
+            resultPlan, describe.output, describe.isExtended)) :: Nil
+      }
+    case _ => Nil
+  }
+}
