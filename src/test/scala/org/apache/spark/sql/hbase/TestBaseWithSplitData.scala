@@ -86,12 +86,24 @@ class TestBaseWithSplitData extends TestBase {
         null
       }
 
-      TestHbase.catalog.createTable(TableName_a, null, HbaseTableName, allColumns, splitKeys)
+      TestHbase.hbaseCatalog.createTable(TableName_a, null, HbaseTableName, allColumns, splitKeys)
 
-      runSql( s"""CREATE TABLE $TableName_b(col1 STRING, col2 BYTE, col3 SHORT, col4 INTEGER,
-          col5 LONG, col6 FLOAT, col7 INTEGER, PRIMARY KEY(col7, col1, col3))
-          MAPPED BY ($HbaseTableName, COLS=[col2=cf1.cq11, col4=cf1.cq12, col5=cf2.cq21,
-          col6=cf2.cq22])""".stripMargin)
+      runSql( s"""CREATE TABLE $TableName_b(
+                 |  col1 STRING,
+                 |  col2 BYTE,
+                 |  col3 SHORT,
+                 |  col4 INTEGER,
+                 |  col5 LONG,
+                 |  col6 FLOAT,
+                 |  col7 INTEGER
+                 |)
+                 |USING org.apache.spark.sql.hbase.HBaseSource
+                 |OPTIONS(
+                 |  tableName $TableName_b,
+                 |  hbaseTableName $HbaseTableName,
+                 |  keyCols "col7, col1, col3",
+                 |  colsMapping "col2=cf1.cq11, col4=cf1.cq12, col5=cf2.cq21, col6=cf2.cq22"
+                 |)""".stripMargin)
 
       if (!TestHbase.hbaseAdmin.tableExists(HbaseTableName)) {
         throw new IllegalArgumentException("where is our table?")
@@ -114,7 +126,7 @@ class TestBaseWithSplitData extends TestBase {
     def putNewTableIntoHBase(keys: Seq[Any], keysType: Seq[DataType],
                              vals: Seq[Any], valsType: Seq[DataType]): Unit = {
       val row = new GenericInternalRow(keys.toArray)
-      val key = makeRowKey(row, keysType)
+      val key = HBaseKVHelper.makeRowKey(row, keysType)
       val put = new Put(key)
       Seq((vals.head, valsType.head, "cf1", "cq11"),
         (vals(1), valsType(1), "cf1", "cq12"),
@@ -197,16 +209,6 @@ class TestBaseWithSplitData extends TestBase {
       Seq(ByteType, IntegerType, LongType, FloatType))
 
     htable.close()
-  }
-
-  def makeRowKey(row: InternalRow, dataTypeOfKeys: Seq[DataType]) = {
-    val rawKeyCol = dataTypeOfKeys.zipWithIndex.map {
-      case (dataType, index) =>
-        (DataTypeUtils.getRowColumnInHBaseRawType(row, index, dataType),
-          dataType)
-    }
-
-    HBaseKVHelper.encodingRawKeyColumns(rawKeyCol)
   }
 
   def addRowVals(put: Put, rowValue: Any, rowType: DataType,

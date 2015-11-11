@@ -23,12 +23,24 @@ class HBaseInsertTableSuite extends TestBaseWithNonSplitData {
 
   var testnm = "Insert all rows to the table from other table"
   test("Insert all rows to the table from other table") {
-    val createQuery = s"""CREATE TABLE insertTestTable(strcol STRING, bytecol BYTE, shortcol SHORT,
-            intcol INTEGER, longcol LONG, floatcol FLOAT, doublecol DOUBLE, 
-            PRIMARY KEY(doublecol, strcol, intcol)) 
-            MAPPED BY (hinsertTestTable, COLS=[bytecol=cf1.hbytecol,
-            shortcol=cf1.hshortcol, longcol=cf2.hlongcol, floatcol=cf2.hfloatcol])"""
-      .stripMargin
+    val createQuery =
+      s"""CREATE TABLE insertTestTable(
+         |  strcol STRING,
+         |  bytecol BYTE,
+         |  shortcol SHORT,
+         |  intcol INTEGER,
+         |  longcol LONG,
+         |  floatcol FLOAT,
+         |  doublecol DOUBLE
+         |)
+         |USING org.apache.spark.sql.hbase.HBaseSource
+         |OPTIONS(
+         |  tableName "insertTestTable",
+         |  hbaseTableName "hinsertTestTable",
+         |  keyCols "doublecol, strcol, intcol",
+         |  colsMapping "bytecol=cf1.hbytecol, shortcol=cf1.hshortcol, longcol=cf2.hlongcol, floatcol=cf2.hfloatcol"
+         |)"""
+        .stripMargin
     runSql(createQuery)
 
     val insertQuery =
@@ -48,12 +60,24 @@ class HBaseInsertTableSuite extends TestBaseWithNonSplitData {
 
   testnm = "Insert few rows to the table from other table after applying filter"
   test("Insert few rows to the table from other table after applying filter") {
-    val createQuery = s"""CREATE TABLE insertTestTableFilter(strcol STRING, bytecol BYTE,
-            shortcol SHORT, intcol INTEGER, longcol LONG, floatcol FLOAT, doublecol DOUBLE, 
-            PRIMARY KEY(doublecol, strcol, intcol)) 
-            MAPPED BY (hinsertTestTableFilter, COLS=[bytecol=cf1.hbytecol,
-            shortcol=cf1.hshortcol, longcol=cf2.hlongcol, floatcol=cf2.hfloatcol])"""
-      .stripMargin
+    val createQuery =
+      s"""CREATE TABLE insertTestTableFilter(
+         |  strcol STRING,
+         |  bytecol BYTE,
+         |  shortcol SHORT,
+         |  intcol INTEGER,
+         |  longcol LONG,
+         |  floatcol FLOAT,
+         |  doublecol DOUBLE
+         |)
+         |USING org.apache.spark.sql.hbase.HBaseSource
+         |OPTIONS(
+         |  tableName "insertTestTableFilter",
+         |  hbaseTableName "hinsertTestTableFilter",
+         |  keyCols "doublecol, strcol, intcol",
+         |  colsMapping "bytecol=cf1.hbytecol, shortcol=cf1.hshortcol, longcol=cf2.hlongcol, floatcol=cf2.hfloatcol"
+         |)"""
+        .stripMargin
     runSql(createQuery)
 
     val insertQuery =
@@ -82,11 +106,21 @@ class HBaseInsertTableSuite extends TestBaseWithNonSplitData {
 
   testnm = "Insert few columns to the table from other table"
   test("Insert few columns to the table from other table") {
-    val createQuery = s"""CREATE TABLE insertTestTableFewCols(strcol STRING, bytecol BYTE,
-            shortcol SHORT, intcol INTEGER, PRIMARY KEY(strcol, intcol)) 
-            MAPPED BY (hinsertTestTableFewCols, COLS=[bytecol=cf1.hbytecol,
-            shortcol=cf1.hshortcol])"""
-      .stripMargin
+    val createQuery =
+      s"""CREATE TABLE insertTestTableFewCols(
+         |  strcol STRING,
+         |  bytecol BYTE,
+         |  shortcol SHORT,
+         |  intcol INTEGER
+         |)
+         |USING org.apache.spark.sql.hbase.HBaseSource
+         |OPTIONS(
+         |  tableName "insertTestTableFewCols",
+         |  hbaseTableName "hinsertTestTableFewCols",
+         |  keyCols "strcol, intcol",
+         |  colsMapping "bytecol=cf1.hbytecol, shortcol=cf1.hshortcol"
+         |)"""
+        .stripMargin
     runSql(createQuery)
 
     val insertQuery =
@@ -109,11 +143,21 @@ class HBaseInsertTableSuite extends TestBaseWithNonSplitData {
 
   testnm = "Insert into values test"
   test("Insert into values test") {
-    val createQuery = s"""CREATE TABLE insertValuesTest(strcol STRING, bytecol BYTE,
-            shortcol SHORT, intcol INTEGER, PRIMARY KEY(strcol, intcol)) 
-            MAPPED BY (hinsertValuesTest, COLS=[bytecol=cf1.hbytecol,
-            shortcol=cf1.hshortcol])"""
-      .stripMargin
+    val createQuery =
+      s"""CREATE TABLE insertValuesTest(
+         |  strcol STRING,
+         |  bytecol BYTE,
+         |  shortcol SHORT,
+         |  intcol INTEGER
+         |)
+         |USING org.apache.spark.sql.hbase.HBaseSource
+         |OPTIONS(
+         |  tableName "insertValuesTest",
+         |  hbaseTableName "hinsertValuesTest",
+         |  keyCols "strcol, intcol",
+         |  colsMapping "bytecol=cf1.hbytecol, shortcol=cf1.hshortcol"
+         |)"""
+        .stripMargin
     runSql(createQuery)
 
     val insertQuery1 = s"INSERT INTO TABLE insertValuesTest VALUES('Row0','a',12340,23456780)"
@@ -142,11 +186,21 @@ class HBaseInsertTableSuite extends TestBaseWithNonSplitData {
 
   testnm = "Insert nullable values test"
   test("Insert nullable values test") {
-    val createQuery = s"""CREATE TABLE insertNullValuesTest(strcol STRING, bytecol BYTE,
-            shortcol SHORT, intcol INTEGER, PRIMARY KEY(strcol))
-            MAPPED BY (hinsertNullValuesTest, COLS=[bytecol=cf1.hbytecol,
-            shortcol=cf1.hshortcol, intcol=cf1.hintcol])"""
-      .stripMargin
+    val createQuery =
+      s"""CREATE TABLE insertNullValuesTest(
+         |  strcol STRING,
+         |  bytecol BYTE,
+         |  shortcol SHORT,
+         |  intcol INTEGER
+         |)
+         |USING org.apache.spark.sql.hbase.HBaseSource
+         |OPTIONS(
+         |  tableName "insertNullValuesTest",
+         |  hbaseTableName "hinsertNullValuesTest",
+         |  keyCols "strcol",
+         |  colsMapping "bytecol=cf1.hbytecol, shortcol=cf1.hshortcol, intcol=cf1.hintcol"
+         |)"""
+        .stripMargin
     runSql(createQuery)
 
     val insertQuery1 = s"INSERT INTO TABLE insertNullValuesTest VALUES('Row0', null,  12340, 23456780)"

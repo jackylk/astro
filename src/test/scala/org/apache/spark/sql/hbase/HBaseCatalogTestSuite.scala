@@ -26,7 +26,7 @@ import org.apache.spark.sql.types._
 import org.apache.spark.unsafe.types.UTF8String
 
 class HBaseCatalogTestSuite extends TestBase {
-  val (catalog, configuration) = (TestHbase.catalog, TestHbase.sparkContext.hadoopConfiguration)
+  val (catalog, configuration) = (TestHbase.hbaseCatalog, TestHbase.sparkContext.hadoopConfiguration)
 
   test("Create Table") {
     // prepare the test data

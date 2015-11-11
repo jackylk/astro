@@ -40,9 +40,10 @@ public class JavaAPISuite extends TestBase implements Serializable {
     private final String hb_staging_table = "HbStagingTable";
     private final String staging_table = "StagingTable";
     private final String create_sql = "CREATE TABLE " + staging_table + "(strcol STRING, bytecol String, shortcol String, intcol String, " +
-            "longcol string, floatcol string, doublecol string, PRIMARY KEY(doublecol, strcol, intcol))" +
-            " MAPPED BY (" + hb_staging_table + ", COLS=[bytecol=cf1.hbytecol, " +
-            "shortcol=cf1.hshortcol, longcol=cf2.hlongcol, floatcol=cf2.hfloatcol])";
+            "longcol string, floatcol string, doublecol string) USING org.apache.spark.sql.hbase.HBaseSource " +
+            "OPTIONS(tableName \"" + staging_table + "\", hbaseTableName \"" + hb_staging_table + "\", " +
+            "keyCols \"doublecol, strcol, intcol\", colsMapping \"bytecol=cf1.hbytecol, " +
+            "shortcol=cf1.hshortcol, longcol=cf2.hlongcol, floatcol=cf2.hfloatcol\")";
     private final String insert_sql = "INSERT INTO TABLE " + staging_table + " VALUES (\"strcol\" , \"bytecol\" , \"shortcol\" , \"intcol\" ," +
             "  \"longcol\" , \"floatcol\" , \"doublecol\")";
     private final String retrieve_sql = "SELECT * FROM " + staging_table;

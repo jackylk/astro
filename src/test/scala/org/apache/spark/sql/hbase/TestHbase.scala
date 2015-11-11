@@ -46,6 +46,6 @@ object TestHbase
 
   // The following operation will initialize the HBaseCatalog.
   // And it should be done after starting MiniHBaseCluster
-  catalog.deploySuccessfully_internal = Some(true)
-  catalog.pwdIsAccessible = true
+  hbaseCatalog.deploySuccessfully_internal = Some(true)
+  hbaseCatalog.pwdIsAccessible = true
 }

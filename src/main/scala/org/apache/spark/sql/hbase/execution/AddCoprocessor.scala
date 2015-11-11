@@ -24,7 +24,7 @@ import org.apache.spark.sql.execution._
 import org.apache.spark.sql.hbase._
 
 private[hbase] case class AddCoprocessor(sqlContext: SQLContext) extends Rule[SparkPlan] {
-  private lazy val catalog = sqlContext.asInstanceOf[HBaseSQLContext].catalog
+  private lazy val catalog = sqlContext.asInstanceOf[HBaseSQLContext].hbaseCatalog
 
   private def coprocessorIsAvailable(relation: HBaseRelation): Boolean = {
     catalog.deploySuccessfully.get && catalog.hasCoprocessor(relation.hbaseTableName)

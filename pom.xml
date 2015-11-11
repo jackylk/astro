@@ -38,16 +38,16 @@
     <project.version>1.5.0</project.version>
     <spark.version>1.5.0</spark.version>
     <hadoop.version>2.4.0</hadoop.version>
-    <hbase.version>0.98.5-hadoop2</hbase.version>
+    <hbase.version>0.98.7-hadoop2</hbase.version>
 
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
-    <akka.group>org.spark-project.akka</akka.group>
+    <akka.group>com.typesafe.akka</akka.group>
     <akka.version>2.3.11</akka.version>
     <java.version>1.7</java.version>
     <maven.version>3.3.3</maven.version>
     <scala.macros.version>2.0.1</scala.macros.version>
-    <mesos.version>0.21.0</mesos.version>
+    <mesos.version>0.21.1</mesos.version>
     <mesos.classifier>shaded-protobuf</mesos.classifier>
     <slf4j.version>1.7.10</slf4j.version>
     <log4j.version>1.2.17</log4j.version>
@@ -210,9 +210,24 @@
       <version>${spark.version}</version>
     </dependency>
     <dependency>
+      <groupId>org.apache.spark</groupId>
+      <artifactId>spark-hive_${scala.binary.version}</artifactId>
+      <version>${spark.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.spark</groupId>
+      <artifactId>spark-unsafe_${scala.binary.version}</artifactId>
+      <version>${spark.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>${jline.groupid}</groupId>
+      <artifactId>jline</artifactId>
+      <version>${jline.version}</version>
+    </dependency>
+    <dependency>
       <groupId>jline</groupId>
       <artifactId>jline</artifactId>
-      <version>0.9.94</version>
+      <version>2.12</version>
     </dependency>
     <dependency>
       <groupId>com.google.guava</groupId>
@@ -983,9 +998,9 @@
     </profile>
     <profile>
       <id>hadoop-2.4</id>
-      <activation>  
+      <activation>
         <activeByDefault>true</activeByDefault>
-      </activation>  
+      </activation>
       <properties>
         <hadoop.version>2.4.0</hadoop.version>
         <protobuf.version>2.5.0</protobuf.version>

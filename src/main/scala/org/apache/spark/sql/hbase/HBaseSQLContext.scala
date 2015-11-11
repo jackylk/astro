@@ -25,8 +25,9 @@ import org.apache.spark.sql.catalyst.analysis.OverrideCatalog
 import org.apache.spark.sql.catalyst.rules.RuleExecutor
 import org.apache.spark.sql.execution.{EnsureRowFormats, EnsureRequirements, SparkPlan}
 import org.apache.spark.sql.hbase.execution.{AddCoprocessor, HBaseStrategies}
+import org.apache.spark.sql.hive.HiveContext
 
-class HBaseSQLContext(sc: SparkContext) extends SQLContext(sc) {
+class HBaseSQLContext(sc: SparkContext) extends HiveContext(sc) {
   self =>
 
   def this(sparkContext: JavaSparkContext) = this(sparkContext.sc)
@@ -37,7 +38,7 @@ class HBaseSQLContext(sc: SparkContext) extends SQLContext(sc) {
     sc.hadoopConfiguration, HBaseConfiguration.create(sc.hadoopConfiguration))
 
   @transient
-  override protected[sql] lazy val catalog: HBaseCatalog =
+  override protected[sql] lazy val hbaseCatalog: HBaseCatalog =
     new HBaseCatalog(this, sc.hadoopConfiguration) with OverrideCatalog
 
   experimental.extraStrategies = Seq((new SparkPlanner with HBaseStrategies).HBaseDataSource)
