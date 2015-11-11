@@ -18,6 +18,7 @@ package org.apache.spark.sql.hbase
 
 import org.apache.spark.sql.SQLContext
 import org.apache.spark.sql.catalyst.SqlParser
+import org.apache.spark.sql.catalyst.analysis.{UnresolvedAttribute, UnresolvedRelation}
 import org.apache.spark.sql.catalyst.expressions._
 import org.apache.spark.sql.catalyst.plans.logical._
 import org.apache.spark.sql.execution.RunnableCommand
@@ -55,11 +56,15 @@ class HBaseSQLParser extends SqlParser {
   protected val TABLES = Keyword("TABLES")
   protected val VALUES = Keyword("VALUES")
   protected val TERMINATED = Keyword("TERMINATED")
+  protected val UPDATE = Keyword("UPDATE")
+  protected val DELETE = Keyword("DELETE")
+  protected val SET = Keyword("SET")
+  protected val EQ = Keyword("=")
 
   override protected lazy val start: Parser[LogicalPlan] =
     start1 | insert | cte |
       drop | alterDrop | alterAdd |
-      insertValues | load
+      insertValues | update | delete | load
 
   protected lazy val insertValues: Parser[LogicalPlan] =
     INSERT ~> INTO ~> TABLE ~> ident ~ (VALUES ~> "(" ~> values <~ ")") ^^ {
@@ -69,6 +74,30 @@ class HBaseSQLParser extends SqlParser {
           else v.value.toString
         }
         InsertValueIntoTableCommand(tableName, valueStringSeq)
+    }
+
+  protected lazy val update: Parser[LogicalPlan] =
+    (UPDATE ~> relation <~ SET) ~ rep1sep(updateColumn, ",") ~ (WHERE ~> expression) ^^ {
+      case table ~ updateColumns ~ exp =>
+        val (columns, values) = updateColumns.unzip
+        catalyst.logical.UpdateTable(
+          table.asInstanceOf[UnresolvedRelation].tableName,
+          columns.map(UnresolvedAttribute.quoted),
+          values,
+          Filter(exp, table))
+    }
+
+  protected lazy val delete: Parser[LogicalPlan] =
+    DELETE ~ FROM ~> relation ~ (WHERE ~> expression) ^^ {
+      case table ~ exp =>
+        catalyst.logical.DeleteFromTable(
+          table.asInstanceOf[UnresolvedRelation].tableName,
+          Filter(exp, table))
+    }
+
+  protected lazy val updateColumn: Parser[(String, String)] =
+    ident ~ (EQ ~> literal) ^^ {
+      case column ~ value => (column, value.value.toString)
     }
 
   protected lazy val drop: Parser[LogicalPlan] =

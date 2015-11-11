@@ -21,9 +21,10 @@ import org.apache.hadoop.hbase.HBaseConfiguration
 import org.apache.spark.SparkContext
 import org.apache.spark.api.java.JavaSparkContext
 import org.apache.spark.sql._
-import org.apache.spark.sql.catalyst.analysis.OverrideCatalog
+import org.apache.spark.sql.catalyst.analysis.{Analyzer, OverrideCatalog}
 import org.apache.spark.sql.catalyst.rules.RuleExecutor
 import org.apache.spark.sql.execution.{EnsureRowFormats, EnsureRequirements, SparkPlan}
+import org.apache.spark.sql.hbase.catalyst.analysis.ReplaceOutput
 import org.apache.spark.sql.hbase.execution.{AddCoprocessor, HBaseStrategies}
 import org.apache.spark.sql.hive.HiveContext
 
@@ -38,8 +39,14 @@ class HBaseSQLContext(sc: SparkContext) extends HiveContext(sc) {
     sc.hadoopConfiguration, HBaseConfiguration.create(sc.hadoopConfiguration))
 
   @transient
-  override protected[sql] lazy val hbaseCatalog: HBaseCatalog =
+  protected[sql] lazy val hbaseCatalog: HBaseCatalog =
     new HBaseCatalog(this, sc.hadoopConfiguration) with OverrideCatalog
+
+  @transient
+  override protected[sql] lazy val analyzer: Analyzer =
+    new Analyzer(catalog, functionRegistry, conf) {
+      override val extendedResolutionRules = ReplaceOutput :: Nil
+    }
 
   experimental.extraStrategies = Seq((new SparkPlanner with HBaseStrategies).HBaseDataSource)
 

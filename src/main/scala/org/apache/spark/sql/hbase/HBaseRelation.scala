@@ -17,7 +17,7 @@
 package org.apache.spark.sql.hbase
 
 import org.apache.hadoop.conf.Configuration
-import org.apache.hadoop.hbase.client.{Get, HTable, Put, Result, Scan}
+import org.apache.hadoop.hbase.client._
 import org.apache.hadoop.hbase.filter._
 import org.apache.hadoop.hbase.util.Bytes
 import org.apache.hadoop.hbase.{HBaseConfiguration, _}
@@ -162,8 +162,7 @@ private[hbase] case class HBaseRelation(
     case _ => BinaryBytesUtils
   }
 
-  lazy val partitionKeys = keyColumns.map(col =>
-    logicalRelation.output.find(_.name == col.sqlName).get)
+  lazy val partitionKeys = keyColumns.map(col => output.find(_.name == col.sqlName).get)
 
   @transient lazy val columnMap = allColumns.map {
     case key: KeyColumn => (key.sqlName, key.order)
@@ -237,7 +236,7 @@ private[hbase] case class HBaseRelation(
   // corresponding logical relation
   @transient lazy val logicalRelation = LogicalRelation(this)
 
-  lazy val output = logicalRelation.output
+  var output: Seq[AttributeReference] = Nil
 
   @transient lazy val dts: Seq[DataType] = allColumns.map(_.dataType)
 
@@ -773,6 +772,49 @@ private[hbase] case class HBaseRelation(
     closeHTable()
   }
 
+  def delete(data: DataFrame) = {
+    sqlContext.sparkContext.runJob(data.rdd, deleteFromHBase _)
+  }
+
+  def deleteFromHBase(context: TaskContext, iterator: Iterator[Row]) = {
+    // TODO:make the BatchMaxSize configurable
+    val BatchMaxSize = 100
+    var rowIndexInBatch = 0
+
+    // note: this is a hack, we can not use scala list
+    // it will throw UnsupportedOperationException.
+    val deletes = new java.util.ArrayList[Delete]()
+    while (iterator.hasNext) {
+      val row = iterator.next()
+      val seq = row.toSeq.map{
+        case s: String => UTF8String.fromString(s)
+        case other => other
+      }
+      val internalRow = InternalRow.fromSeq(seq)
+      val rawKeyCol = keyColumns.map(
+        kc => {
+          val rowColumn = DataTypeUtils.getRowColumnInHBaseRawType(
+            internalRow, kc.ordinal, kc.dataType)
+          (rowColumn, kc.dataType)
+        }
+      )
+      val key = HBaseKVHelper.encodingRawKeyColumns(rawKeyCol)
+      val delete = new Delete(key)
+      deletes.add(delete)
+      rowIndexInBatch += 1
+      if (rowIndexInBatch >= BatchMaxSize) {
+        htable.delete(deletes)
+        deletes.clear()
+        rowIndexInBatch = 0
+      }
+    }
+    if (deletes.nonEmpty) {
+      htable.delete(deletes)
+      deletes.clear()
+      rowIndexInBatch = 0
+    }
+    closeHTable()
+  }
 
   def buildScan(requiredColumns: Seq[Attribute], filters: Seq[Expression]): RDD[InternalRow] = {
     require(filters.size < 2, "Internal logical error: unexpected filter list size")

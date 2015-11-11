@@ -137,8 +137,8 @@ object HBaseSQLCliDriver extends Logging {
                      |  tableName "table_name",
                      |  namespace "default",
                      |  hbaseTableName "htable_name",
-                     |  keyCols "col7,col1,col3",
-                     |  colsMapping "col2=cf1.cq11,col4=cf1.cq12,col5=cf2.cq21,col6=cf2.cq22",
+                     |  keyCols "col_name, ...",
+                     |  colsMapping "col_name=family_name.qualifier, ...",
                      |  encodingFormat "StringFormat"
                      |)""".stripMargin)
         case "DROP" =>
@@ -161,6 +161,10 @@ object HBaseSQLCliDriver extends Logging {
         case "INSERT" =>
           println("INSERT INTO TABLE table_name SELECT clause")
           println("INSERT INTO TABLE table_name VALUES (value, ...)")
+        case "UPDATE" =>
+          println("UPDATE table_name SET col_name = VALUE (WHERE clause)")
+        case "DELETE" =>
+          println("DELETE FROM table_name (WHERE clause)")
         case "DESCRIBE" =>
           println("DESCRIBE table_name")
         case "SHOW" =>
@@ -176,7 +180,7 @@ object HBaseSQLCliDriver extends Logging {
   private def printHelpUsage() = {
     println("""Usage: HELP Statement    
       Statement:
-        CREATE | DROP | ALTER | LOAD | SELECT | INSERT | DESCRIBE | SHOW""")    
+        CREATE | DROP | ALTER | LOAD | SELECT | INSERT | UPDATE | DELETE | DESCRIBE | SHOW""")
   }
 }
 
