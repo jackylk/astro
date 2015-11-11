@@ -62,7 +62,7 @@ class HBaseSQLParser extends SqlParser {
   override protected lazy val start: Parser[LogicalPlan] =
     start1 | insert | cte |
       create | drop | alterDrop | alterAdd |
-      insertValues | load | show | describe
+      insertValues | load | show //| describe
 
   protected lazy val insertValues: Parser[LogicalPlan] =
     INSERT ~> INTO ~> TABLE ~> ident ~ (VALUES ~> "(" ~> values <~ ")") ^^ {
@@ -226,10 +226,10 @@ class HBaseSQLParser extends SqlParser {
   protected lazy val show: Parser[LogicalPlan] =
     SHOW ~> TABLES <~ opt(";") ^^^ ShowTablesCommand
 
-  protected lazy val describe: Parser[LogicalPlan] =
-    (DESCRIBE ~> ident) ^^ {
-      case tableName => DescribeTableCommand(tableName)
-    }
+//  protected lazy val describe: Parser[LogicalPlan] =
+//    (DESCRIBE ~> ident) ^^ {
+//      case tableName => DescribeTableCommand(tableName)
+//    }
 
   override protected lazy val primitiveType: Parser[DataType] =
     "(?i)string".r ^^^ StringType |
