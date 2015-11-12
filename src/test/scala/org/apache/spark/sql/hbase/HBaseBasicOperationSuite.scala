@@ -62,10 +62,16 @@ class HBaseBasicOperationSuite extends TestBaseWithSplitData {
     sql( """INSERT INTO TABLE tb0 SELECT col4,col4,col6,col3 FROM ta""")
     assert(sql( """SELECT * FROM tb0""").collect().length == 14)
 
-    sql( """DROP TABLE tb0""")
+    dropLogicalTable("tb0")
+    dropNativeHbaseTable("testNamespace.ht0")
   }
 
   test("Insert and Query Single Row") {
+    try {
+      dropLogicalTable("tb1")
+    } catch {
+      case e: Throwable => logInfo(e.getMessage)
+    }
     sql( """CREATE TABLE tb1 (column1 INTEGER, column2 STRING)
            |USING org.apache.spark.sql.hbase.HBaseSource
            |OPTIONS(
@@ -86,10 +92,16 @@ class HBaseBasicOperationSuite extends TestBaseWithSplitData {
       """SELECT * FROM tb1 WHERE (column1 = 1024)
         |OR (column1 = 1028 AND column2 ="abd")""".stripMargin).collect().length == 2)
 
-    sql( """DROP TABLE tb1""")
+    dropLogicalTable("tb1")
+    dropNativeHbaseTable("ht1")
   }
 
   test("Insert and Query Single Row in StringFormat") {
+    try {
+      dropLogicalTable("tb2")
+    } catch {
+      case e: Throwable => logInfo(e.getMessage)
+    }
     sql( """CREATE TABLE tb1 (
            |  col1 STRING,
            |  col2 BOOLEAN,
@@ -126,7 +138,8 @@ class HBaseBasicOperationSuite extends TestBaseWithSplitData {
     sql( """SELECT * FROM tb1 where col7>5000 order by col7""")
       .collect().zip(Seq("row2", "row3")).foreach{case (r,s) => assert(r.getString(0) == s)}
 
-    sql( """DROP TABLE tb1""")
+    dropLogicalTable("tb2")
+    dropNativeHbaseTable("ht2")
   }
 
   test("Select test 0") {
@@ -147,6 +160,11 @@ class HBaseBasicOperationSuite extends TestBaseWithSplitData {
   }
 
   test("Point Aggregate Query") {
+    try {
+      dropLogicalTable("tb2")
+    } catch {
+      case e: Throwable => logInfo(e.getMessage)
+    }
     sql( """CREATE TABLE tb2 (column2 INTEGER, column1 INTEGER, column4 FLOAT, column3 SMALLINT)
            |USING org.apache.spark.sql.hbase.HBaseSource
            |OPTIONS(
@@ -160,6 +178,8 @@ class HBaseBasicOperationSuite extends TestBaseWithSplitData {
     val result = sql( """SELECT count(*) FROM tb2 where column1=1 AND column2=1""").collect()
     assert(result.size == 1)
     assert(result(0).get(0) == 1)
+
+    dropLogicalTable("tb2")
   }
 
   test("Select test 1 (AND, OR)") {
