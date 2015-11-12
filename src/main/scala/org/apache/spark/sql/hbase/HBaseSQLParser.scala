@@ -88,11 +88,14 @@ class HBaseSQLParser extends SqlParser {
     }
 
   protected lazy val delete: Parser[LogicalPlan] =
-    DELETE ~ FROM ~> relation ~ (WHERE ~> expression) ^^ {
+    DELETE ~ FROM ~> relation ~ (WHERE ~> expression).? ^^ {
       case table ~ exp =>
-        catalyst.logical.DeleteFromTable(
-          table.asInstanceOf[UnresolvedRelation].tableName,
-          Filter(exp, table))
+        val child = if (exp.isDefined) {
+          Filter(exp.get, table)
+        } else {
+          table
+        }
+        catalyst.logical.DeleteFromTable(table.asInstanceOf[UnresolvedRelation].tableName, child)
     }
 
   protected lazy val updateColumn: Parser[(String, String)] =
