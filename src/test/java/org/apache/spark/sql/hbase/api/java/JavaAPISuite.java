@@ -33,19 +33,24 @@ import java.io.Serializable;
 
 public class JavaAPISuite extends TestBase implements Serializable {
     private transient JavaSparkContext sc;
-    private transient SQLContext hsc;
+    private transient HBaseSQLContext hsc;
     private transient MiniHBaseCluster cluster;
     private transient HBaseAdmin hbaseAdmin;
 
     private final String hb_staging_table = "HbStagingTable";
     private final String staging_table = "StagingTable";
-    private final String create_sql = "CREATE TABLE " + staging_table + "(strcol STRING, bytecol String, shortcol String, intcol String, " +
-            "longcol string, floatcol string, doublecol string) USING org.apache.spark.sql.hbase.HBaseSource " +
-            "OPTIONS(tableName \"" + staging_table + "\", hbaseTableName \"" + hb_staging_table + "\", " +
+    private final String create_sql = "CREATE TABLE " + staging_table + "(" +
+            "strcol STRING, bytecol String, shortcol String, intcol String, " +
+            "longcol string, floatcol string, doublecol string) " +
+            "USING org.apache.spark.sql.hbase.HBaseSource " +
+            "OPTIONS(tableName \"" + staging_table + "\", " +
+            "hbaseTableName \"" + hb_staging_table + "\", " +
             "keyCols \"doublecol, strcol, intcol\", colsMapping \"bytecol=cf1.hbytecol, " +
             "shortcol=cf1.hshortcol, longcol=cf2.hlongcol, floatcol=cf2.hfloatcol\")";
-    private final String insert_sql = "INSERT INTO TABLE " + staging_table + " VALUES (\"strcol\" , \"bytecol\" , \"shortcol\" , \"intcol\" ," +
+    private final String insert_sql = "INSERT INTO TABLE " + staging_table +
+            " VALUES (\"strcol\" , \"bytecol\" , \"shortcol\" , \"intcol\" ," +
             "  \"longcol\" , \"floatcol\" , \"doublecol\")";
+    private final String drop_sql = "DROP TABLE " + staging_table;
     private final String retrieve_sql = "SELECT * FROM " + staging_table;
 
     @Before
@@ -76,6 +81,7 @@ public class JavaAPISuite extends TestBase implements Serializable {
         hsc.sql(insert_sql).collect();
         Row[] row = hsc.sql(retrieve_sql).collect();
 
+        hsc.catalog().client().runSqlHive(drop_sql);
         assert (row[0].toString().equals("[strcol,bytecol,shortcol,intcol,longcol,floatcol,doublecol]"));
     }
 }

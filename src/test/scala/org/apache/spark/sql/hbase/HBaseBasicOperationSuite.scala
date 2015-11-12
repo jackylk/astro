@@ -37,11 +37,16 @@ class HBaseBasicOperationSuite extends TestBaseWithSplitData {
   }
 
   test("Insert Into table in StringFormat") {
+    try {
+      dropLogicalTable("tb0")
+    } catch {
+      case e: Throwable => logInfo(e.getMessage)
+    }
     sql( """CREATE TABLE tb0 (
            |  column2 INTEGER,
            |  column1 INTEGER,
            |  column4 FLOAT,
-           |  column3 SHORT
+           |  column3 SMALLINT
            |)
            |USING org.apache.spark.sql.hbase.HBaseSource
            |OPTIONS(
@@ -50,7 +55,7 @@ class HBaseBasicOperationSuite extends TestBaseWithSplitData {
            |  keyCols "column1",
            |  colsMapping "column2=family0.qualifier0, column3=family1.qualifier1, column4=family2.qualifier2",
            |  encodingFormat "StringFormat"
-           )"""
+           )""".stripMargin
     )
 
     assert(sql( """SELECT * FROM tb0""").collect().length == 0)
@@ -68,7 +73,7 @@ class HBaseBasicOperationSuite extends TestBaseWithSplitData {
            |  hbaseTableName "ht1",
            |  keyCols "column1",
            |  colsMapping "column2=cf.cq"
-           |)"""
+           |)""".stripMargin
     )
 
     assert(sql( """SELECT * FROM tb1""").collect().length == 0)
@@ -87,8 +92,8 @@ class HBaseBasicOperationSuite extends TestBaseWithSplitData {
   test("Insert and Query Single Row in StringFormat") {
     sql( """CREATE TABLE tb1 (
            |  col1 STRING,
-           |  col2 BOOL,
-           |  col3 SHORT,
+           |  col2 BOOLEAN,
+           |  col3 SMALLINT,
            |  col4 INTEGER,
            |  col5 LONG,
            |  col6 FLOAT,
@@ -142,14 +147,14 @@ class HBaseBasicOperationSuite extends TestBaseWithSplitData {
   }
 
   test("Point Aggregate Query") {
-    sql( """CREATE TABLE tb2 (column2 INTEGER, column1 INTEGER, column4 FLOAT, column3 SHORT)
+    sql( """CREATE TABLE tb2 (column2 INTEGER, column1 INTEGER, column4 FLOAT, column3 SMALLINT)
            |USING org.apache.spark.sql.hbase.HBaseSource
            |OPTIONS(
            |  tableName "tb2",
            |  hbaseTableName "testNamespace.ht0",
            |  keyCols "column1, column2",
            |  colsMapping "column3=family1.qualifier1, column4=family2.qualifier2"
-           |)"""
+           |)""".stripMargin
     )
     sql( """INSERT INTO TABLE tb2 SELECT col4,col4,col6,col3 FROM ta""")
     val result = sql( """SELECT count(*) FROM tb2 where column1=1 AND column2=1""").collect()

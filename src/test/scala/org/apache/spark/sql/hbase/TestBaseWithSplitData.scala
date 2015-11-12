@@ -63,47 +63,59 @@ class TestBaseWithSplitData extends TestBase {
         TestHbase.hbaseAdmin.deleteTable(Metadata_Table)
       }
 
-      var allColumns = List[AbstractColumn]()
-      allColumns = allColumns :+ KeyColumn("col1", StringType, 1)
-      allColumns = allColumns :+ NonKeyColumn("col2", ByteType, "cf1", "cq11")
-      allColumns = allColumns :+ KeyColumn("col3", ShortType, 2)
-      allColumns = allColumns :+ NonKeyColumn("col4", IntegerType, "cf1", "cq12")
-      allColumns = allColumns :+ NonKeyColumn("col5", LongType, "cf2", "cq21")
-      allColumns = allColumns :+ NonKeyColumn("col6", FloatType, "cf2", "cq22")
-      allColumns = allColumns :+ KeyColumn("col7", IntegerType, 0)
-
-      val splitKeys: Array[Array[Byte]] = if (useMultiplePartitions) {
-        Array(
-          new GenericInternalRow(Array(256, UTF8String.fromString(" p256 "), 128: Short)),
-          new GenericInternalRow(Array(32, UTF8String.fromString(" p32 "), 256: Short)),
-          new GenericInternalRow(Array(-32, UTF8String.fromString(" n32 "), 128: Short)),
-          new GenericInternalRow(Array(-256, UTF8String.fromString(" n256 "), 256: Short)),
-          new GenericInternalRow(Array(-128, UTF8String.fromString(" n128 "), 128: Short)),
-          new GenericInternalRow(Array(0, UTF8String.fromString(" zero "), 256: Short)),
-          new GenericInternalRow(Array(128, UTF8String.fromString(" p128 "), 512: Short))
-        ).map(HBaseKVHelper.makeRowKey(_, Seq(IntegerType, StringType, ShortType)))
-      } else {
-        null
+      try {
+        dropLogicalTable(TableName_a)
+      } catch {
+        case e: Throwable => logInfo(e.getMessage)
       }
 
-      TestHbase.hbaseCatalog.createTable(TableName_a, null, HbaseTableName, allColumns, splitKeys)
+      val splitKeys = "256,p256,128|32,p32,256|-32,n32,128|-256,n256,256|-128,n128,128|" +
+        "0,zero,256|128,p128,512"
+      val ta_sql =
+        s"""CREATE TABLE $TableName_a(
+           |  col1 STRING,
+           |  col2 TINYINT,
+           |  col3 SMALLINT,
+           |  col4 INT,
+           |  col5 LONG,
+           |  col6 FLOAT,
+           |  col7 INT
+           |)
+           |USING org.apache.spark.sql.hbase.HBaseSource
+           |OPTIONS(
+           |  tableName "$TableName_a",
+           |  hbaseTableName "ht",
+           |  keyCols "col7,col1,col3",
+           |  colsMapping "col2=cf1.cq11,col4=cf1.cq12,col5=cf2.cq21,col6=cf2.cq22",
+           |  splitKeys "$splitKeys"
+           |  )""".stripMargin
+      runSql(ta_sql)
 
-      runSql( s"""CREATE TABLE $TableName_b(
-                 |  col1 STRING,
-                 |  col2 BYTE,
-                 |  col3 SHORT,
-                 |  col4 INTEGER,
-                 |  col5 LONG,
-                 |  col6 FLOAT,
-                 |  col7 INTEGER
-                 |)
-                 |USING org.apache.spark.sql.hbase.HBaseSource
-                 |OPTIONS(
-                 |  tableName $TableName_b,
-                 |  hbaseTableName $HbaseTableName,
-                 |  keyCols "col7, col1, col3",
-                 |  colsMapping "col2=cf1.cq11, col4=cf1.cq12, col5=cf2.cq21, col6=cf2.cq22"
-                 |)""".stripMargin)
+      try {
+        dropLogicalTable(TableName_b)
+      } catch {
+        case e: Throwable => logInfo(e.getMessage)
+      }
+
+      val sql =
+        s"""CREATE TABLE $TableName_b(
+           |  col1 STRING,
+           |  col2 TINYINT,
+           |  col3 SMALLINT,
+           |  col4 INT,
+           |  col5 LONG,
+           |  col6 FLOAT,
+           |  col7 INT
+           |)
+           |USING org.apache.spark.sql.hbase.HBaseSource
+           |OPTIONS(
+           |  tableName "$TableName_b",
+           |  hbaseTableName "ht",
+           |  keyCols "col7,col1,col3",
+           |  colsMapping "col2=cf1.cq11,col4=cf1.cq12,col5=cf2.cq21,col6=cf2.cq22"
+           |)
+         """.stripMargin
+      runSql(sql)
 
       if (!TestHbase.hbaseAdmin.tableExists(HbaseTableName)) {
         throw new IllegalArgumentException("where is our table?")

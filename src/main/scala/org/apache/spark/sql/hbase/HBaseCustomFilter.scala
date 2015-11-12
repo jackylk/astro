@@ -621,7 +621,7 @@ private[hbase] class HBaseCustomFilter extends FilterBase with Writable {
   }
 
   override def hasFilterRow: Boolean = {
-    if (remainingPredicate != null) true else false
+    true
   }
 
   override def filterRow(): Boolean = {

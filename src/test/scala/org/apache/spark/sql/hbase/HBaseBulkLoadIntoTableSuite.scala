@@ -18,6 +18,7 @@
 package org.apache.spark.sql.hbase
 
 import org.apache.hadoop.hbase.util.Bytes
+import org.apache.hadoop.hbase.util.Bytes
 import org.apache.spark.sql.Row
 import org.apache.spark.sql.catalyst.plans.logical.LogicalPlan
 import org.apache.spark.sql.hbase.execution._
@@ -373,6 +374,16 @@ class HBaseBulkLoadIntoTableSuite extends TestBase {
   }
 
   test("bulk load for presplit table") {
+    try {
+      dropLogicalTable("testblk")
+    } catch {
+      case e: Throwable => logInfo(e.getMessage)
+    }
+    // delete the existing hbase table
+    if (TestHbase.hbaseAdmin.tableExists("presplit_table")) {
+      TestHbase.hbaseAdmin.disableTable("presplit_table")
+      TestHbase.hbaseAdmin.deleteTable("presplit_table")
+    }
     val splitKeys = Seq(4, 8, 12).map { x =>
       BinaryBytesUtils.create(IntegerType).toBytes(x)
     }
@@ -415,6 +426,16 @@ class HBaseBulkLoadIntoTableSuite extends TestBase {
   }
 
   test("parall bulk load for presplit table") {
+    try {
+      dropLogicalTable("testblk")
+    } catch {
+      case e: Throwable => logInfo(e.getMessage)
+    }
+    // delete the existing hbase table
+    if (TestHbase.hbaseAdmin.tableExists("presplit_table")) {
+      TestHbase.hbaseAdmin.disableTable("presplit_table")
+      TestHbase.hbaseAdmin.deleteTable("presplit_table")
+    }
     val splitKeys = Seq(4, 8, 12).map { x =>
       BinaryBytesUtils.create(IntegerType).toBytes(x)
     }
@@ -457,6 +478,16 @@ class HBaseBulkLoadIntoTableSuite extends TestBase {
   }
 
   test("parall bulk load presplit table with more than 128 regions") {
+    try {
+      dropLogicalTable("region_cnt_131")
+    } catch {
+      case e: Throwable => logInfo(e.getMessage)
+    }
+    // delete the existing hbase table
+    if (TestHbase.hbaseAdmin.tableExists("presplit_table")) {
+      TestHbase.hbaseAdmin.disableTable("presplit_table")
+      TestHbase.hbaseAdmin.deleteTable("presplit_table")
+    }
     // HBasePartitioner binarySearch throws NPE if # regions > 128
     // commit dae6546373a14d4ceb22680954c3482ed33e346a
 
@@ -467,15 +498,15 @@ class HBaseBulkLoadIntoTableSuite extends TestBase {
 
     TestHbase.hbaseCatalog.createHBaseUserTable(
       "REGION_CNT_131_HTBL",
-      Set("f"),
+      Set("cf1", "cf2"),
       splitKeys.toArray)
 
     val sql1 =
-      s"""CREATE TABLE testblk(col1 INT, col2 INT, col3 STRING)
+      s"""CREATE TABLE region_cnt_131(col1 INT, col2 INT, col3 STRING)
          |USING org.apache.spark.sql.hbase.HBaseSource
          |OPTIONS(
-         |  tableName "testblk",
-         |  hbaseTableName "presplit_table",
+         |  tableName "region_cnt_131",
+         |  hbaseTableName "REGION_CNT_131_HTBL",
          |  keyCols "col1",
          |  colsMapping "col2=cf1.a, col3=cf2.b"
          |)"""
@@ -506,7 +537,7 @@ class HBaseBulkLoadIntoTableSuite extends TestBase {
     assert(runSql("select * from region_cnt_131").length == 260)
 
     // cleanup
-    runSql("drop table region_cnt_131")
+    dropLogicalTable("region_cnt_131")
     dropNativeHbaseTable("REGION_CNT_131_HTBL")
   }
 }

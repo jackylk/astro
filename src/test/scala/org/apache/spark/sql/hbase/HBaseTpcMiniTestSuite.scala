@@ -65,6 +65,29 @@ class HBaseTpcMiniTestSuite extends TestBase {
       }
     }
 
+    val colsMapping =
+      "ss_sold_date_sk=f.ss_sold_date_sk, " +
+      "ss_sold_time_sk=f.ss_sold_time_sk, " +
+      "ss_customer_sk=f.ss_customer_sk, " +
+      "ss_cdemo_sk=f.ss_cdemo_sk, " +
+      "ss_hdemo_sk=f.ss_hdemo_sk, " +
+      "ss_addr_sk=f.ss_addr_sk, " +
+      "ss_store_sk=f.ss_store_sk, " +
+      "ss_promo_sk=f.ss_promo_sk, " +
+      "ss_quantity=f.ss_quantity, " +
+      "ss_wholesale_cost=f.ss_wholesale_cost, " +
+      "ss_list_price=f.ss_list_price, " +
+      "ss_sales_price=f.ss_sales_price, " +
+      "ss_ext_discount_amt=f.ss_ext_discount_amt, " +
+      "ss_ext_sales_price=f.ss_ext_sales_price, " +
+      "ss_ext_wholesale_cost=f.ss_ext_wholesale_cost, " +
+      "ss_ext_list_price=f.ss_ext_list_price, " +
+      "ss_ext_tax=f.ss_ext_tax, " +
+      "ss_coupon_amt=f.ss_coupon_amt, " +
+      "ss_net_paid=f.ss_net_paid, " +
+      "ss_net_paid_inc_tax=f.ss_net_paid_inc_tax, " +
+      "ss_net_profit=f.ss_net_profit"
+
     /**
      * create table
      */
@@ -99,27 +122,7 @@ class HBaseTpcMiniTestSuite extends TestBase {
          |  tableName "store_sales",
          |  hbaseTableName "store_sales_htable",
          |  keyCols "ss_item_sk, ss_ticket_number",
-         |  colsMapping "ss_sold_date_sk=f.ss_sold_date_sk,
-         |    ss_sold_time_sk=f.ss_sold_time_sk,
-         |    ss_customer_sk=f.ss_customer_sk,
-         |    ss_cdemo_sk=f.ss_cdemo_sk,
-         |    ss_hdemo_sk=f.ss_hdemo_sk,
-         |    ss_addr_sk=f.ss_addr_sk,
-         |    ss_store_sk=f.ss_store_sk,
-         |    ss_promo_sk=f.ss_promo_sk,
-         |    ss_quantity=f.ss_quantity,
-         |    ss_wholesale_cost=f.ss_wholesale_cost,
-         |    ss_list_price=f.ss_list_price,
-         |    ss_sales_price=f.ss_sales_price,
-         |    ss_ext_discount_amt=f.ss_ext_discount_amt,
-         |    ss_ext_sales_price=f.ss_ext_sales_price,
-         |    ss_ext_wholesale_cost=f.ss_ext_wholesale_cost,
-         |    ss_ext_list_price=f.ss_ext_list_price,
-         |    ss_ext_tax=f.ss_ext_tax,
-         |    ss_coupon_amt=f.ss_coupon_amt,
-         |    ss_net_paid=f.ss_net_paid,
-         |    ss_net_paid_inc_tax=f.ss_net_paid_inc_tax,
-         |    ss_net_profit=f.ss_net_profit"
+         |  colsMapping "$colsMapping"
          |)""".stripMargin
 
     try {

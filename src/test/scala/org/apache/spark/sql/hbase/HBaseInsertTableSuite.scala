@@ -26,8 +26,8 @@ class HBaseInsertTableSuite extends TestBaseWithNonSplitData {
     val createQuery =
       s"""CREATE TABLE insertTestTable(
          |  strcol STRING,
-         |  bytecol BYTE,
-         |  shortcol SHORT,
+         |  bytecol TINYINT,
+         |  shortcol SMALLINT,
          |  intcol INTEGER,
          |  longcol LONG,
          |  floatcol FLOAT,
@@ -63,8 +63,8 @@ class HBaseInsertTableSuite extends TestBaseWithNonSplitData {
     val createQuery =
       s"""CREATE TABLE insertTestTableFilter(
          |  strcol STRING,
-         |  bytecol BYTE,
-         |  shortcol SHORT,
+         |  bytecol TINYINT,
+         |  shortcol SMALLINT,
          |  intcol INTEGER,
          |  longcol LONG,
          |  floatcol FLOAT,
@@ -109,8 +109,8 @@ class HBaseInsertTableSuite extends TestBaseWithNonSplitData {
     val createQuery =
       s"""CREATE TABLE insertTestTableFewCols(
          |  strcol STRING,
-         |  bytecol BYTE,
-         |  shortcol SHORT,
+         |  bytecol TINYINT,
+         |  shortcol SMALLINT,
          |  intcol INTEGER
          |)
          |USING org.apache.spark.sql.hbase.HBaseSource
@@ -146,8 +146,8 @@ class HBaseInsertTableSuite extends TestBaseWithNonSplitData {
     val createQuery =
       s"""CREATE TABLE insertValuesTest(
          |  strcol STRING,
-         |  bytecol BYTE,
-         |  shortcol SHORT,
+         |  bytecol TINYINT,
+         |  shortcol SMALLINT,
          |  intcol INTEGER
          |)
          |USING org.apache.spark.sql.hbase.HBaseSource
@@ -189,8 +189,8 @@ class HBaseInsertTableSuite extends TestBaseWithNonSplitData {
     val createQuery =
       s"""CREATE TABLE insertNullValuesTest(
          |  strcol STRING,
-         |  bytecol BYTE,
-         |  shortcol SHORT,
+         |  bytecol TINYINT,
+         |  shortcol SMALLINT,
          |  intcol INTEGER
          |)
          |USING org.apache.spark.sql.hbase.HBaseSource

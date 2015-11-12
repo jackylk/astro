@@ -55,14 +55,10 @@ class HBaseCFTestSuite extends TestBase {
     /**
      * drop the existing logical table if it exists
      */
-    if (TestHbase.hbaseCatalog.checkLogicalTableExist(tableName)) {
-      val dropSql = "DROP TABLE " + tableName
-      try {
-        runSql(dropSql)
-      } catch {
-        case e: IllegalStateException =>
-          logError(s"Error occurs while dropping the table $tableName", e)
-      }
+    try {
+      dropLogicalTable(tableName)
+    } catch {
+      case e: Throwable => logInfo(e.getMessage)
     }
 
     /**

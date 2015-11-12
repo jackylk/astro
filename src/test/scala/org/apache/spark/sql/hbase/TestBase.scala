@@ -23,6 +23,7 @@ import java.util.Date
 
 import org.apache.hadoop.hbase.{HColumnDescriptor, HTableDescriptor, TableExistsException, TableName}
 import org.apache.spark.Logging
+import org.apache.spark.sql.catalyst.TableIdentifier
 import org.apache.spark.sql.catalyst.plans.logical
 import org.apache.spark.sql.catalyst.util._
 import org.apache.spark.sql.{DataFrame, Row}
@@ -155,6 +156,12 @@ abstract class TestBase
       case e: TableExistsException =>
         logError(s"Table already exists $tableName", e)
     }
+  }
+
+  def dropLogicalTable(tableName: String) = {
+    TestHbase.catalog.refreshTable(TableIdentifier(tableName))
+    TestHbase.catalog.client.runSqlHive(s"DROP TABLE $tableName")
+    TestHbase.catalog.unregisterTable(Seq(tableName))
   }
 
   def dropNativeHbaseTable(tableName: String) = {

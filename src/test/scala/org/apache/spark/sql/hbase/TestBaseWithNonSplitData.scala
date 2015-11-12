@@ -44,17 +44,17 @@ class TestBaseWithNonSplitData extends TestBase {
     val testTableCreationSQL =
       s"""CREATE TABLE $TestTableName(
          |  strcol STRING,
-         |  bytecol BYTE,
-         |  shortcol SHORT,
+         |  bytecol TINYINT,
+         |  shortcol SMALLINT,
          |  intcol INTEGER,
          |  longcol LONG,
          |  floatcol FLOAT,
          |  doublecol DOUBLE
          |)
          |USING org.apache.spark.sql.hbase.HBaseSource
-         |OPTIONS(, PRIMARY KEY(doublecol, strcol, intcol))
-         |  tableName $TestTableName,
-         |  hbaseTableName $TestHBaseTableName,
+         |OPTIONS(
+         |  tableName "$TestTableName",
+         |  hbaseTableName "$TestHBaseTableName",
          |  keyCols "doublecol, strcol, intcol",
          |  colsMapping "bytecol=cf1.hbytecol, shortcol=cf1.hshortcol, longcol=cf2.hlongcol, floatcol=cf2.hfloatcol"
          |)"""

@@ -236,7 +236,7 @@ private[hbase] case class HBaseRelation(
   // corresponding logical relation
   @transient lazy val logicalRelation = LogicalRelation(this)
 
-  var output: Seq[AttributeReference] = Nil
+  var output: Seq[AttributeReference] = logicalRelation.output
 
   @transient lazy val dts: Seq[DataType] = allColumns.map(_.dataType)
 
