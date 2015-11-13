@@ -18,6 +18,7 @@ package org.apache.spark.sql.hbase
 
 import org.apache.spark.sql.SQLContext
 import org.apache.spark.sql.catalyst.SqlParser
+import org.apache.spark.sql.catalyst.analysis.{UnresolvedAttribute, UnresolvedRelation}
 import org.apache.spark.sql.catalyst.expressions._
 import org.apache.spark.sql.catalyst.plans.logical._
 import org.apache.spark.sql.execution.RunnableCommand
@@ -41,9 +42,7 @@ class HBaseSQLParser extends SqlParser {
   protected val ADD = Keyword("ADD")
   protected val ALTER = Keyword("ALTER")
   protected val COLS = Keyword("COLS")
-  protected val CREATE = Keyword("CREATE")
   protected val DATA = Keyword("DATA")
-  protected val DESCRIBE = Keyword("DESCRIBE")
   protected val DROP = Keyword("DROP")
   protected val EXISTS = Keyword("EXISTS")
   protected val FIELDS = Keyword("FIELDS")
@@ -54,15 +53,18 @@ class HBaseSQLParser extends SqlParser {
   protected val MAPPED = Keyword("MAPPED")
   protected val PRIMARY = Keyword("PRIMARY")
   protected val PARALL = Keyword("PARALL")
-  protected val SHOW = Keyword("SHOW")
   protected val TABLES = Keyword("TABLES")
   protected val VALUES = Keyword("VALUES")
   protected val TERMINATED = Keyword("TERMINATED")
+  protected val UPDATE = Keyword("UPDATE")
+  protected val DELETE = Keyword("DELETE")
+  protected val SET = Keyword("SET")
+  protected val EQ = Keyword("=")
 
   override protected lazy val start: Parser[LogicalPlan] =
     start1 | insert | cte |
-      create | drop | alterDrop | alterAdd |
-      insertValues | load | show | describe
+      drop | alterDrop | alterAdd |
+      insertValues | update | delete | load
 
   protected lazy val insertValues: Parser[LogicalPlan] =
     INSERT ~> INTO ~> TABLE ~> ident ~ (VALUES ~> "(" ~> values <~ ")") ^^ {
@@ -74,108 +76,32 @@ class HBaseSQLParser extends SqlParser {
         InsertValueIntoTableCommand(tableName, valueStringSeq)
     }
 
-  protected lazy val create: Parser[LogicalPlan] =
-    CREATE ~> TABLE ~> ident ~
-      ("(" ~> tableCols <~ ",") ~
-      (PRIMARY ~> KEY ~> "(" ~> keys <~ ")" <~ ")") ~
-      (MAPPED ~> BY ~> "(" ~> opt(nameSpace)) ~
-      (ident <~ ",") ~
-      (COLS ~> "=" ~> "[" ~> expressions <~ "]" <~ ")") ~
-      (IN ~> ident).? <~ opt(";") ^^ {
-
-      case tableName ~ tableColumns ~ keySeq ~
-        tableNameSpace ~ hbaseTableName ~ mappingInfo ~ encodingFormat =>
-        // Since the lexical can not recognize the symbol "=" as we expected, we compose it
-        // to expression first and then translate it into Map[String, (String, String)].
-        // TODO: Now get the info by hacking, need to change it into normal way if possible
-        val infoMap: Map[String, (String, String)] =
-          mappingInfo.map { case EqualTo(e1, e2) =>
-            val info = e2.toString().substring(1).split('.')
-            if (info.length != 2) throw new Exception("\nSyntax Error of Create Table")
-            e1.toString().substring(1) ->(info(0), info(1))
-          }.toMap
-
-
-        // Check whether the column info are correct or not
-        val tableColSet = tableColumns.unzip._1.toSet
-        val keySet = keySeq.toSet
-        if (tableColSet.size != tableColumns.length ||
-          keySet.size != keySeq.length ||
-          !(keySet union infoMap.keySet).equals(tableColSet) ||
-          (keySet intersect infoMap.keySet).nonEmpty
-        ) {
-          throw new Exception(
-            "The Column Info of Create Table are not correct")
-        }
-
-        val customizedNameSpace = tableNameSpace.getOrElse("")
-
-        val divideTableColsByKeyOrNonkey = tableColumns.partition {
-          case (name, _) =>
-            keySeq.contains(name)
-        }
-        val dataTypeOfKeyCols = divideTableColsByKeyOrNonkey._1
-        val dataTypeOfNonkeyCols = divideTableColsByKeyOrNonkey._2
-
-        // Get Key Info
-        val keyColsWithDataType = keySeq.map {
-          key => {
-            val typeOfKey = dataTypeOfKeyCols.find(_._1 == key).get._2
-            (key, typeOfKey)
-          }
-        }
-
-        // Get Nonkey Info
-        val nonKeyCols = dataTypeOfNonkeyCols.map {
-          case (name, typeOfData) =>
-            val infoElem = infoMap.get(name).get
-            (name, typeOfData, infoElem._1, infoElem._2)
-        }
-
-        val colsSeqString = tableColumns.unzip._1.reduceLeft(_ + "," + _)
-        val keyColsString = keyColsWithDataType
-          .map(k => k._1 + "," + k._2)
-          .reduceLeft(_ + ";" + _)
-        val nonkeyColsString = if (nonKeyCols.isEmpty) ""
-        else {
-          nonKeyCols
-            .map(k => k._1 + "," + k._2 + "," + k._3 + "," + k._4)
-            .reduceLeft(_ + ";" + _)
-        }
-
-        val opts: Map[String, String] = Seq(
-          ("tableName", tableName),
-          ("namespace", customizedNameSpace),
-          ("hbaseTableName", hbaseTableName),
-          ("colsSeq", colsSeqString),
-          ("keyCols", keyColsString),
-          ("nonKeyCols", nonkeyColsString),
-          ("encodingFormat", encodingFormat.getOrElse("binaryformat").toLowerCase)
-        ).toMap
-
-        CreateTable(tableName, "org.apache.spark.sql.hbase.HBaseSource", opts)
+  protected lazy val update: Parser[LogicalPlan] =
+    (UPDATE ~> relation <~ SET) ~ rep1sep(updateColumn, ",") ~ (WHERE ~> expression) ^^ {
+      case table ~ updateColumns ~ exp =>
+        val (columns, values) = updateColumns.unzip
+        catalyst.logical.UpdateTable(
+          table.asInstanceOf[UnresolvedRelation].tableName,
+          columns.map(UnresolvedAttribute.quoted),
+          values,
+          Filter(exp, table))
     }
 
-  private[hbase] case class CreateTable(
-                                         tableName: String,
-                                         provider: String,
-                                         options: Map[String, String]) extends RunnableCommand {
-    // create table of persistent metadata
-    def run(sqlContext: SQLContext) = {
-      val loader = Utils.getContextOrSparkClassLoader
-      val clazz: Class[_] = try loader.loadClass(provider) catch {
-        case cnf: java.lang.ClassNotFoundException =>
-          try loader.loadClass(provider + ".DefaultSource") catch {
-            case cnf: java.lang.ClassNotFoundException =>
-              sys.error(s"Failed to load class for data source: $provider")
-          }
-      }
-      val dataSource = clazz.newInstance()
-        .asInstanceOf[org.apache.spark.sql.sources.RelationProvider]
-      dataSource.createRelation(sqlContext, options)
-      Seq.empty
+  protected lazy val delete: Parser[LogicalPlan] =
+    DELETE ~ FROM ~> relation ~ (WHERE ~> expression).? ^^ {
+      case table ~ exp =>
+        val child = if (exp.isDefined) {
+          Filter(exp.get, table)
+        } else {
+          table
+        }
+        catalyst.logical.DeleteFromTable(table.asInstanceOf[UnresolvedRelation].tableName, child)
     }
-  }
+
+  protected lazy val updateColumn: Parser[(String, String)] =
+    ident ~ (EQ ~> literal) ^^ {
+      case column ~ value => (column, value.value.toString)
+    }
 
   protected lazy val drop: Parser[LogicalPlan] =
     DROP ~> TABLE ~> ident <~ opt(";") ^^ {
@@ -219,16 +145,6 @@ class HBaseSQLParser extends SqlParser {
         BulkLoadIntoTableCommand(
           filePath, table, isLocal.isDefined,
           delimiter, isparall.isDefined)
-    }
-
-  // syntax:
-  // SHOW TABLES
-  protected lazy val show: Parser[LogicalPlan] =
-    SHOW ~> TABLES <~ opt(";") ^^^ ShowTablesCommand
-
-  protected lazy val describe: Parser[LogicalPlan] =
-    (DESCRIBE ~> ident) ^^ {
-      case tableName => DescribeTableCommand(tableName)
     }
 
   override protected lazy val primitiveType: Parser[DataType] =

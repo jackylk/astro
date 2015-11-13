@@ -23,7 +23,7 @@ import org.apache.spark.sql._
 import org.apache.spark.sql.hbase.TestData._
 import org.apache.spark.sql.types._
 
-class HBaseSQLQuerySuite extends TestBaseWithSplitData {
+class HBaseSQLQuerySuite extends TestBase {
   // Make sure the tables are loaded.
   import org.apache.spark.sql.hbase.TestHbase._
   import org.apache.spark.sql.hbase.TestHbase.implicits._
@@ -34,6 +34,7 @@ class HBaseSQLQuerySuite extends TestBaseWithSplitData {
     super.beforeAll()
     origZone = TimeZone.getDefault
     TimeZone.setDefault(TimeZone.getTimeZone("UTC"))
+    TestData
   }
 
   override protected def afterAll() {

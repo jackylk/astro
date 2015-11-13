@@ -51,12 +51,17 @@ class HBaseAdditionalQuerySuite extends TestBase {
       generateRowKey(Array(4096, UTF8String.fromString("cc"), 0), 7),
       generateRowKey(Array(4096, UTF8String.fromString("cc"), 1000))
     )
-    TestHbase.catalog.createHBaseUserTable("presplit_table", Set("cf"), splitKeys, useCoprocessor)
+    TestHbase.hbaseCatalog.createHBaseUserTable("presplit_table", Set("cf"), splitKeys, useCoprocessor)
 
     val sql =
-      s"""CREATE TABLE testblk(col1 INT, col2 STRING, col3 INT, col4 STRING,
-          PRIMARY KEY(col1, col2, col3))
-          MAPPED BY (presplit_table, COLS=[col4=cf.a])"""
+      s"""CREATE TABLE testblk(col1 INT, col2 STRING, col3 INT, col4 STRING)
+         |USING org.apache.spark.sql.hbase.HBaseSource
+         |OPTIONS(
+         |  tableName "testblk",
+         |  hbaseTableName "presplit_table",
+         |  keyCols "col1, col2, col3",
+         |  colsMapping "col4=cf.a"
+         |)"""
         .stripMargin
     runSql(sql)
 
@@ -69,10 +74,14 @@ class HBaseAdditionalQuerySuite extends TestBase {
 
   def createTableTeacher(useCoprocessor: Boolean = true) = {
     val sql =
-      s"""CREATE TABLE spark_teacher_3key(
-          grade INT, class INT, subject STRING, teacher_name STRING, teacher_age INT,
-          PRIMARY KEY(grade, class, subject))
-          MAPPED BY (teacher, COLS=[teacher_name=cf.a, teacher_age=cf.b])"""
+      s"""CREATE TABLE spark_teacher_3key(grade INT, class INT, subject STRING, teacher_name STRING, teacher_age INT)
+         |USING org.apache.spark.sql.hbase.HBaseSource
+         |OPTIONS(
+         |  tableName "spark_teacher_3key",
+         |  hbaseTableName "teacher",
+         |  keyCols "grade, class, subject",
+         |  colsMapping "teacher_name=cf.a, teacher_age=cf.b"
+         |)"""
         .stripMargin
     runSql(sql)
 
@@ -84,11 +93,19 @@ class HBaseAdditionalQuerySuite extends TestBase {
   def createTablePeople(useCoprocessor: Boolean = true) = {
     val sql =
       s"""CREATE TABLE spark_people(
-          rowNum INT, people_name STRING, people_age INT,
-          school_identification STRING, school_director STRING,
-          PRIMARY KEY(rowNum))
-          MAPPED BY (people, COLS=[people_name=cf.a, people_age=cf.b,
-          school_identification=cf.c, school_director=cf.d])"""
+         |  rowNum INT,
+         |  people_name STRING,
+         |  people_age INT,
+         |  school_identification STRING,
+         |  school_director STRING
+         |)
+         |USING org.apache.spark.sql.hbase.HBaseSource
+         |OPTIONS(
+         |  tableName "spark_people",
+         |  hbaseTableName "people",
+         |  keyCols "rowNum",
+         |  colsMapping "people_name=cf.a, people_age=cf.b, school_identification=cf.c, school_director=cf.d"
+         |)"""
         .stripMargin
     runSql(sql)
 

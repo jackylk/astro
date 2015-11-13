@@ -41,12 +41,24 @@ class TestBaseWithNonSplitData extends TestBase {
 
   override protected def beforeAll() = {
     super.beforeAll()
-    val testTableCreationSQL = s"""CREATE TABLE $TestTableName(strcol STRING, bytecol BYTE,
-                               shortcol SHORT, intcol INTEGER,
-            longcol LONG, floatcol FLOAT, doublecol DOUBLE, PRIMARY KEY(doublecol, strcol, intcol))
-            MAPPED BY ($TestHBaseTableName, COLS=[bytecol=cf1.hbytecol,
-            shortcol=cf1.hshortcol, longcol=cf2.hlongcol, floatcol=cf2.hfloatcol])"""
-      .stripMargin
+    val testTableCreationSQL =
+      s"""CREATE TABLE $TestTableName(
+         |  strcol STRING,
+         |  bytecol TINYINT,
+         |  shortcol SMALLINT,
+         |  intcol INTEGER,
+         |  longcol LONG,
+         |  floatcol FLOAT,
+         |  doublecol DOUBLE
+         |)
+         |USING org.apache.spark.sql.hbase.HBaseSource
+         |OPTIONS(
+         |  tableName "$TestTableName",
+         |  hbaseTableName "$TestHBaseTableName",
+         |  keyCols "doublecol, strcol, intcol",
+         |  colsMapping "bytecol=cf1.hbytecol, shortcol=cf1.hshortcol, longcol=cf2.hlongcol, floatcol=cf2.hfloatcol"
+         |)"""
+        .stripMargin
     createTable(TestTableName, TestHBaseTableName, testTableCreationSQL)
     loadData(TestTableName, s"$CsvPath/$DefaultLoadFile")
   }
@@ -62,7 +74,7 @@ class TestBaseWithNonSplitData extends TestBase {
       createNativeHbaseTable(hbaseTable, TestHbaseColFamilies)
     }
 
-    if (TestHbase.catalog.checkLogicalTableExist(tableName)) {
+    if (TestHbase.hbaseCatalog.checkLogicalTableExist(tableName)) {
       val dropSql = s"DROP TABLE $tableName"
       runSql(dropSql)
     }
