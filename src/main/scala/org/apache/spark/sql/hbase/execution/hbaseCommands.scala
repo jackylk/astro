@@ -300,26 +300,9 @@ case class BulkLoadIntoTableCommand(
      var tempHdfsFilePath: Path = null
      val hfileSystem = FileSystem.get(conf)
     @transient val hadoopReader = if (isLocal) {
-     val src = new Path(inputPath);
-     val tempUuid = UUID.randomUUID().toString
-     val tempdir = "/.---astro-temp-dir---.asrto/"
-
-     if (!hfileSystem.exists(new Path(tempdir))) {
-              hfileSystem.mkdirs(new Path(tempdir))
-           }
-     val destPath = tempdir + tempUuid
-
-      tempHdfsFilePath = new Path(destPath)
-     try {
-             hfileSystem.copyFromLocalFile(src, tempHdfsFilePath)
-            }
-     catch {
-              case e: Exception=> {
-              logError(s"File:$inputPath not found! Local input failed!", e)
-              return Seq.empty[Row]
-                     }
-                }
-      new HadoopReader(sqlContext.sparkContext, destPath, delimiter)(relation)
+      val fs = FileSystem.getLocal(conf)
+      val pathString = fs.pathToFile(new Path(inputPath)).toURI.toURL.toString
+      new HadoopReader(sqlContext.sparkContext, pathString, delimiter)(relation)
     } else {
       new HadoopReader(sqlContext.sparkContext, inputPath, delimiter)(relation)
     }
