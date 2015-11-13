@@ -50,7 +50,7 @@ public class JavaAPISuite extends TestBase implements Serializable {
     private final String insert_sql = "INSERT INTO TABLE " + staging_table +
             " VALUES (\"strcol\" , \"bytecol\" , \"shortcol\" , \"intcol\" ," +
             "  \"longcol\" , \"floatcol\" , \"doublecol\")";
-    private final String drop_sql = "DROP TABLE " + staging_table;
+    private final String drop_sql = "DROP TABLE IF EXISTS " + staging_table;
     private final String retrieve_sql = "SELECT * FROM " + staging_table;
 
     @Before
@@ -77,6 +77,7 @@ public class JavaAPISuite extends TestBase implements Serializable {
 
     @Test
     public void testCreateInsertRetrieveTable() {
+        hsc.catalog().client().runSqlHive(drop_sql);
         hsc.sql(create_sql).collect();
         hsc.sql(insert_sql).collect();
         Row[] row = hsc.sql(retrieve_sql).collect();
