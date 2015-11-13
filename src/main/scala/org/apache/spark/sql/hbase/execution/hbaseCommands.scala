@@ -453,20 +453,3 @@ case class BulkLoadIntoTableCommand(
 
   override def output = Nil
 }
-
-@DeveloperApi
-case class HBaseCommandStrategy(context: HBaseSQLContext) extends Strategy {
-  def apply(plan: LogicalPlan): Seq[SparkPlan] = plan match {
-    case describe: DescribeCommand =>
-      val resultPlan = context.executePlan(describe.table).executedPlan
-      resultPlan match {
-        case t: HBaseSQLTableScan =>
-          ExecutedCommand(
-            DescribeTableCommand(t.relation, describe.output)) :: Nil
-        case _ =>
-          ExecutedCommand(RunnableDescribeCommand(
-            resultPlan, describe.output, describe.isExtended)) :: Nil
-      }
-    case _ => Nil
-  }
-}
