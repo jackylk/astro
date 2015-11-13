@@ -17,6 +17,8 @@
 
 package org.apache.spark.sql.hbase.catalyst.expressions
 
+import org.apache.spark.sql.Row
+import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.errors.TreeNodeException
 import org.apache.spark.sql.catalyst.expressions._
 import org.apache.spark.sql.hbase.types.RangeType._
@@ -58,7 +60,7 @@ object PartialPredicateOperations {
      *                  for nullness checking purpose or not
      * @return
      */
-    def partialReduce(input: Row, schema: Seq[Attribute], checkNull: Boolean = false):
+    def partialReduce(input: InternalRow, schema: Seq[Attribute], checkNull: Boolean = false):
       (Any, Expression) = {
       e match {
         case And(left, right) =>
@@ -131,7 +133,7 @@ object PartialPredicateOperations {
             for (item <- evaluatedList if !foundInList) {
               if (item._1 == null) {
                 newList = newList :+ item._2
-              } else if (item._2 == null) {
+              } else {
                 val cmp = prc2(input, value.dataType, item._2.dataType, evaluatedValue, item._1)
                 if (cmp.isDefined && cmp.get == 0) {
                   foundInList = true
@@ -171,12 +173,13 @@ object PartialPredicateOperations {
               (null, InSet(evaluatedValue._2, newHset))
             }
           }
+        case b: BoundReference =>
+          //Todo: This is a hacking way to make it workable with spark 1.5 and it should be optimized
+          val res = input.copy().asInstanceOf[GenericInternalRow].values(b.ordinal)
+          (res, schema(b.ordinal))
         case l: LeafExpression =>
           val res = l.eval(input)
           (res, l)
-        case b: BoundReference =>
-          val res = b.eval(input)
-          (res, schema(b.ordinal))
         case n: NamedExpression =>
           val res = n.eval(input)
           (res, n)
@@ -310,7 +313,7 @@ object PartialPredicateOperations {
 
     @inline
     protected def prc2(
-                        i: Row,
+                        i: InternalRow,
                         dataType1: DataType,
                         dataType2: DataType,
                         eval1: Any,

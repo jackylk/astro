@@ -21,12 +21,14 @@ import org.apache.hadoop.hbase.HBaseConfiguration
 import org.apache.spark.SparkContext
 import org.apache.spark.api.java.JavaSparkContext
 import org.apache.spark.sql._
-import org.apache.spark.sql.catalyst.analysis.OverrideCatalog
+import org.apache.spark.sql.catalyst.analysis.{Analyzer, OverrideCatalog}
 import org.apache.spark.sql.catalyst.rules.RuleExecutor
-import org.apache.spark.sql.execution.{EnsureRequirements, SparkPlan}
-import org.apache.spark.sql.hbase.execution.{AddCoprocessor, HBaseCommandStrategy, HBaseStrategies}
+import org.apache.spark.sql.execution.{EnsureRowFormats, EnsureRequirements, SparkPlan}
+import org.apache.spark.sql.hbase.catalyst.analysis.ReplaceOutput
+import org.apache.spark.sql.hbase.execution.{AddCoprocessor, HBaseStrategies}
+import org.apache.spark.sql.hive.HiveContext
 
-class HBaseSQLContext(sc: SparkContext) extends SQLContext(sc) {
+class HBaseSQLContext(sc: SparkContext) extends HiveContext(sc) {
   self =>
 
   def this(sparkContext: JavaSparkContext) = this(sparkContext.sc)
@@ -37,18 +39,24 @@ class HBaseSQLContext(sc: SparkContext) extends SQLContext(sc) {
     sc.hadoopConfiguration, HBaseConfiguration.create(sc.hadoopConfiguration))
 
   @transient
-  override protected[sql] lazy val catalog: HBaseCatalog =
+  protected[sql] lazy val hbaseCatalog: HBaseCatalog =
     new HBaseCatalog(this, sc.hadoopConfiguration) with OverrideCatalog
 
-  experimental.extraStrategies =
-    Seq((
-    new SparkPlanner with HBaseStrategies).HBaseDataSource,
-    HBaseCommandStrategy(self))
+  @transient
+  override protected[sql] lazy val analyzer: Analyzer =
+    new Analyzer(catalog, functionRegistry, conf) {
+      override val extendedResolutionRules = ReplaceOutput :: Nil
+    }
 
+  experimental.extraStrategies = Seq((new SparkPlanner with HBaseStrategies).HBaseDataSource)
+
+  // Attention! : Update the following value when spark updates.
   @transient
   override protected[sql] val prepareForExecution = new RuleExecutor[SparkPlan] {
     val batches = Batch("Add exchange", Once, EnsureRequirements(self)) ::
+      Batch("Add row converters firstly", Once, EnsureRowFormats) ::
       Batch("Add coprocessor", Once, AddCoprocessor(self)) ::
+      Batch("Add row converters secondly", Once, EnsureRowFormats) ::
       Nil
   }
 }

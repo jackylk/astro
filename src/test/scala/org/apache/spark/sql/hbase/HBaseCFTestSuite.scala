@@ -55,14 +55,10 @@ class HBaseCFTestSuite extends TestBase {
     /**
      * drop the existing logical table if it exists
      */
-    if (TestHbase.catalog.checkLogicalTableExist(tableName)) {
-      val dropSql = "DROP TABLE " + tableName
-      try {
-        runSql(dropSql)
-      } catch {
-        case e: IllegalStateException =>
-          logError(s"Error occurs while dropping the table $tableName", e)
-      }
+    try {
+      dropLogicalTable(tableName)
+    } catch {
+      case e: Throwable => logInfo(e.getMessage)
     }
 
     /**
@@ -70,17 +66,19 @@ class HBaseCFTestSuite extends TestBase {
      */
     val createSql =
       s"""CREATE TABLE cf(
-        k1 INTEGER,
-        k2 INTEGER,
-        k3 INTEGER,
-        nk1 INTEGER,
-        nk2 INTEGER,
-        PRIMARY KEY(k1, k2, k3))
-        MAPPED BY
-        (cf_htable, COLS=[
-          nk1=f.nk1,
-          nk2=f.nk2
-        ])""".stripMargin
+         |  k1 INTEGER,
+         |  k2 INTEGER,
+         |  k3 INTEGER,
+         |  nk1 INTEGER,
+         |  nk2 INTEGER
+         |)
+         |USING org.apache.spark.sql.hbase.HBaseSource
+         |OPTIONS(
+         |  tableName "cf",
+         |  hbaseTableName "cf_htable",
+         |  keyCols "k1, k2, k3",
+         |  colsMapping "nk1=f.nk1, nk2=f.nk2"
+         |)""".stripMargin
 
     try {
       runSql(createSql)

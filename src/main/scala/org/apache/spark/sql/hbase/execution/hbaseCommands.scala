@@ -25,27 +25,79 @@ import org.apache.hadoop.hbase._
 import org.apache.hadoop.hbase.io.ImmutableBytesWritable
 import org.apache.hadoop.hbase.mapreduce.{HFileOutputFormat2, LoadIncrementalHFiles}
 import org.apache.hadoop.hbase.util.Bytes
+import org.apache.hadoop.mapred.JobConf
 import org.apache.hadoop.mapreduce.lib.output.FileOutputCommitter
 import org.apache.hadoop.mapreduce.{Job, RecordWriter}
 import org.apache.spark.annotation.DeveloperApi
 import org.apache.spark.mapreduce.SparkHadoopMapReduceUtil
 import org.apache.spark.sql._
-import org.apache.spark.sql.catalyst.expressions.{Attribute, Row}
-import org.apache.spark.sql.catalyst.plans.logical.{LogicalPlan, Subquery}
-import org.apache.spark.sql.execution.{DescribeCommand => RunnableDescribeCommand, ExecutedCommand, RunnableCommand, SparkPlan}
+import org.apache.spark.sql.catalyst.TableIdentifier
+import org.apache.spark.sql.catalyst.expressions.{Expression, Attribute}
+import org.apache.spark.sql.catalyst.plans.logical.Subquery
+import org.apache.spark.sql.execution.RunnableCommand
+import org.apache.spark.sql.execution.datasources.LogicalRelation
 import org.apache.spark.sql.hbase.HBasePartitioner.HBaseRawOrdering
 import org.apache.spark.sql.hbase._
 import org.apache.spark.sql.hbase.util.{DataTypeUtils, Util}
-import org.apache.spark.sql.sources.{DescribeCommand, LogicalRelation}
 import org.apache.spark.sql.types._
 import org.apache.spark.{Logging, SerializableWritable, SparkEnv, TaskContext}
 
-import scala.collection.mutable.ArrayBuffer
+import scala.collection.mutable
+
 @DeveloperApi
 case class AlterDropColCommand(tableName: String, columnName: String) extends RunnableCommand {
 
   def run(sqlContext: SQLContext): Seq[Row] = {
-    sqlContext.catalog.asInstanceOf[HBaseCatalog].alterTableDropNonKey(tableName, columnName)
+
+    val hbaseContext = sqlContext.asInstanceOf[HBaseSQLContext]
+
+    val hiveTable = hbaseContext.catalog.client.getTable("default", tableName)
+    if (hiveTable == null) {
+      throw new Exception(s"Table $tableName is not exists")
+    }
+
+    val keyCols = hiveTable.serdeProperties.get("keyCols").get.split(",")
+    keyCols.foreach { keyCol =>
+      if (columnName == keyCol) {
+        throw new Exception(s"Cannot drop key column $columnName")
+      }
+    }
+
+    val oriTableProperties = hiveTable.properties
+    val tableProperties = new mutable.HashMap[String, String]
+    tableProperties.put("spark.sql.sources.provider",
+      hiveTable.properties.get("spark.sql.sources.provider").get)
+    val schemaString =
+      oriTableProperties.get("spark.sql.sources.schema")
+        .orElse(HBaseCatalog.schemaStringFromParts(oriTableProperties))
+    val userSpecifiedSchema =
+      schemaString.map(s => DataType.fromJson(s).asInstanceOf[StructType]).get
+    val alterUserSpecifiedSchema: Option[StructType] =
+      Some(StructType(userSpecifiedSchema.filter { field =>
+        field.name != columnName
+      }))
+    alterUserSpecifiedSchema.foreach { schema =>
+      val threshold = sqlContext.conf.schemaStringLengthThreshold
+      val schemaJsonString = schema.json
+      // Split the JSON string.
+      val parts = schemaJsonString.grouped(threshold).toSeq
+      tableProperties.put("spark.sql.sources.schema.numParts", parts.size.toString)
+      parts.zipWithIndex.foreach { case (part, index) =>
+        tableProperties.put(s"spark.sql.sources.schema.part.$index", part)
+      }
+    }
+    tableProperties.put("EXTERNAL", oriTableProperties.get("EXTERNAL").get)
+
+    val oriColsMapping = hiveTable.serdeProperties.get("colsMapping").get.split(",")
+    val newColsMapping = oriColsMapping.filter { colMapping =>
+      colMapping.split("=")(0) != columnName
+    }
+
+    hbaseContext.catalog.client.alterTable(hiveTable.copy(properties = tableProperties.toMap,
+      serdeProperties = hiveTable.serdeProperties
+        .updated("colsMapping", newColsMapping.mkString(","))))
+    hbaseContext.catalog.refreshTable(TableIdentifier(tableName, Some("default")))
+
     Seq.empty[Row]
   }
 
@@ -61,11 +113,47 @@ case class AlterAddColCommand(
                                colQualifier: String) extends RunnableCommand {
 
   def run(sqlContext: SQLContext): Seq[Row] = {
-    val hbaseCatalog = sqlContext.catalog.asInstanceOf[HBaseCatalog]
-    hbaseCatalog.alterTableAddNonKey(tableName,
-      NonKeyColumn(
-        colName, hbaseCatalog.getDataType(colType), colFamily, colQualifier)
-    )
+
+    val hbaseContext = sqlContext.asInstanceOf[HBaseSQLContext]
+
+    val hiveTable = hbaseContext.catalog.client.getTable("default", tableName)
+    if (hiveTable == null) {
+      throw new Exception(s"Table $tableName is not exists")
+    }
+
+    val oriTableProperties = hiveTable.properties
+    val tableProperties = new mutable.HashMap[String, String]
+    tableProperties.put("spark.sql.sources.provider",
+      hiveTable.properties.get("spark.sql.sources.provider").get)
+    val schemaString =
+      oriTableProperties.get("spark.sql.sources.schema")
+        .orElse(HBaseCatalog.schemaStringFromParts(oriTableProperties))
+    val userSpecifiedSchema =
+      schemaString.map(s => DataType.fromJson(s).asInstanceOf[StructType]).get
+    val alterUserSpecifiedSchema: Option[StructType] =
+      Some(StructType(userSpecifiedSchema.fields.toSeq :+
+        StructField(colName, hbaseContext.hbaseCatalog.getDataType(colType))))
+    alterUserSpecifiedSchema.foreach { schema =>
+      val threshold = sqlContext.conf.schemaStringLengthThreshold
+      val schemaJsonString = schema.json
+      // Split the JSON string.
+      val parts = schemaJsonString.grouped(threshold).toSeq
+      tableProperties.put("spark.sql.sources.schema.numParts", parts.size.toString)
+      parts.zipWithIndex.foreach { case (part, index) =>
+        tableProperties.put(s"spark.sql.sources.schema.part.$index", part)
+      }
+    }
+    tableProperties.put("EXTERNAL", oriTableProperties.get("EXTERNAL").get)
+
+    val oriColsMapping = hiveTable.serdeProperties.get("colsMapping").get.split(",").toSeq
+    val newColsMapping = oriColsMapping :+
+      (colName + "=" + colFamily + "." + colQualifier)
+
+    hbaseContext.catalog.client.alterTable(hiveTable.copy(properties = tableProperties.toMap,
+      serdeProperties = hiveTable.serdeProperties
+        .updated("colsMapping", newColsMapping.mkString(","))))
+    hbaseContext.catalog.refreshTable(TableIdentifier(tableName, Some("default")))
+
     Seq.empty[Row]
   }
 
@@ -76,8 +164,17 @@ case class AlterAddColCommand(
 case class DropHbaseTableCommand(tableName: String) extends RunnableCommand {
 
   def run(sqlContext: SQLContext): Seq[Row] = {
-    val hbaseCatalog = sqlContext.catalog.asInstanceOf[HBaseCatalog]
-    hbaseCatalog.deleteTable(tableName)
+
+    val hbaseContext = sqlContext.asInstanceOf[HBaseSQLContext]
+    try {
+      hbaseContext.cacheManager.tryUncacheQuery(hbaseContext.table(tableName))
+    } catch {
+      case e: Throwable => log.warn(s"${e.getMessage}", e)
+    }
+    hbaseContext.catalog.refreshTable(TableIdentifier(tableName, Some("default")))
+    hbaseContext.catalog.client.runSqlHive(s"DROP TABLE $tableName")
+    hbaseContext.catalog.unregisterTable(Seq(tableName))
+
     Seq.empty[Row]
   }
 
@@ -85,35 +182,10 @@ case class DropHbaseTableCommand(tableName: String) extends RunnableCommand {
 }
 
 @DeveloperApi
-case object ShowTablesCommand extends RunnableCommand {
-
-  def run(sqlContext: SQLContext): Seq[Row] = {
-    val buffer = new ArrayBuffer[Row]()
-    val tables = sqlContext.catalog.asInstanceOf[HBaseCatalog].getAllTableName
-    tables.foreach(x => buffer.append(Row(x)))
-    buffer.toSeq
-  }
-
-  override def output: Seq[Attribute] = StructType(Seq(StructField("", StringType))).toAttributes
-}
-
-@DeveloperApi
-case class DescribeTableCommand(table: HBaseRelation, override val output: Seq[Attribute])
-  extends RunnableCommand {
-
-  def run(sqlContext: SQLContext): Seq[Row] = {
-    table.allColumns.map { field =>
-      val comment = if (field.isKeyColumn) "KEY COLUMN" else "NON KEY COLUMN"
-      Row(field.sqlName, field.dataType.simpleString, comment)
-    }
-  }
-}
-
-@DeveloperApi
 case class InsertValueIntoTableCommand(tableName: String, valueSeq: Seq[String])
   extends RunnableCommand {
   override def run(sqlContext: SQLContext) = {
-    val solvedRelation = sqlContext.catalog.lookupRelation(Seq(tableName))
+    val solvedRelation = sqlContext.asInstanceOf[HBaseSQLContext].catalog.lookupRelation(Seq(tableName))
     val relation: HBaseRelation = solvedRelation.asInstanceOf[Subquery]
       .child.asInstanceOf[LogicalRelation]
       .relation.asInstanceOf[HBaseRelation]
@@ -129,6 +201,74 @@ case class InsertValueIntoTableCommand(tableName: String, valueSeq: Seq[String])
   }
 
   override def output: Seq[Attribute] = Seq.empty
+
+  // Override the following two functions to solve the problem in inserting a null value
+  // Remove this part if you have found a better sollution
+
+  /**
+   * Runs [[transformDown]] with `rule` on all expressions present in this query operator.
+   * @param rule the rule to be applied to every expression in this operator.
+   */
+  override def transformExpressionsDown(rule: PartialFunction[Expression, Expression]): this.type = {
+    var changed = false
+
+    @inline def transformExpressionDown(e: Expression): Expression = {
+      val newE = e.transformDown(rule)
+      if (newE.fastEquals(e)) {
+        e
+      } else {
+        changed = true
+        newE
+      }
+    }
+
+    def recursiveTransform(arg: Any): AnyRef = arg match {
+      case e: Expression => transformExpressionDown(e)
+      case Some(e: Expression) => Some(transformExpressionDown(e))
+      case m: Map[_, _] => m
+      case d: DataType => d // Avoid unpacking Structs
+      case seq: Traversable[_] => seq.map(recursiveTransform)
+      case other: AnyRef => other
+      case null => null // !!! Important thing to add to handle the null value
+    }
+
+    val newArgs = productIterator.map(recursiveTransform).toArray
+
+    if (changed) makeCopy(newArgs).asInstanceOf[this.type] else this
+  }
+
+  /**
+   * Runs [[transformUp]] with `rule` on all expressions present in this query operator.
+   * @param rule the rule to be applied to every expression in this operator.
+   * @return
+   */
+  override def transformExpressionsUp(rule: PartialFunction[Expression, Expression]): this.type = {
+    var changed = false
+
+    @inline def transformExpressionUp(e: Expression): Expression = {
+      val newE = e.transformUp(rule)
+      if (newE.fastEquals(e)) {
+        e
+      } else {
+        changed = true
+        newE
+      }
+    }
+
+    def recursiveTransform(arg: Any): AnyRef = arg match {
+      case e: Expression => transformExpressionUp(e)
+      case Some(e: Expression) => Some(transformExpressionUp(e))
+      case m: Map[_, _] => m
+      case d: DataType => d // Avoid unpacking Structs
+      case seq: Traversable[_] => seq.map(recursiveTransform)
+      case other: AnyRef => other
+      case null => null // !!! Important thing to add to handle the null value
+    }
+
+    val newArgs = productIterator.map(recursiveTransform).toArray
+
+    if (changed) makeCopy(newArgs).asInstanceOf[this.type] else this
+  }
 }
 
 @DeveloperApi
@@ -142,17 +282,17 @@ case class BulkLoadIntoTableCommand(
   with SparkHadoopMapReduceUtil
   with Logging {
 
-  override def run(sqlContext: SQLContext):Seq[Row] = {
-    @transient val solvedRelation = sqlContext.catalog.lookupRelation(Seq(tableName))
+  override def run(sqlContext: SQLContext) = {
+    @transient val hbContext = sqlContext.asInstanceOf[HBaseSQLContext]
+    @transient val solvedRelation = hbContext.catalog.lookupRelation(Seq(tableName))
     @transient val relation: HBaseRelation = solvedRelation.asInstanceOf[Subquery]
       .child.asInstanceOf[LogicalRelation]
       .relation.asInstanceOf[HBaseRelation]
-    @transient val hbContext = sqlContext.asInstanceOf[HBaseSQLContext]
 
     // tmp path for storing HFile
     @transient val tmpPath = Util.getTempFilePath(
       hbContext.sparkContext.hadoopConfiguration, relation.tableName)
-    @transient val job = new Job(hbContext.sparkContext.hadoopConfiguration)
+    @transient val job = Job.getInstance(hbContext.sparkContext.hadoopConfiguration)
     HFileOutputFormat2.configureIncrementalLoad(job, relation.htable)
     job.getConfiguration.set("mapreduce.output.fileoutputformat.outputdir", tmpPath)
 

@@ -26,11 +26,16 @@ import org.apache.log4j.Logger
 import org.apache.spark._
 import org.apache.spark.executor.TaskMetrics
 import org.apache.spark.rdd.RDD
+import org.apache.spark.scheduler.LiveListenerBus
+import org.apache.spark.shuffle.ShuffleMemoryManager
+import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.expressions._
 import org.apache.spark.sql.catalyst.expressions.codegen.GeneratePredicate
 import org.apache.spark.sql.hbase.util.DataTypeUtils
 import org.apache.spark.sql.types._
 import org.apache.spark.sql.{Row, SQLContext}
+import org.apache.spark.unsafe.memory.{MemoryAllocator, ExecutorMemoryManager, TaskMemoryManager}
+import org.apache.spark.util.collection.unsafe.sort.UnsafeExternalSorter
 
 /**
  * HBaseCoprocessorSQLReaderRDD:
@@ -40,12 +45,12 @@ class HBaseCoprocessorSQLReaderRDD(var relation: HBaseRelation,
                                    var finalOutput: Seq[Attribute],
                                    var otherFilters: Option[Expression],
                                    @transient sqlContext: SQLContext)
-  extends RDD[Row](sqlContext.sparkContext, Nil) with Logging {
+  extends RDD[InternalRow](sqlContext.sparkContext, Nil) with Logging {
 
   @transient var scanner: RegionScanner = _
 
-  private def createIterator(context: TaskContext): Iterator[Row] = {
-    val otherFilter: (Row) => Boolean = {
+  private def createIterator(context: TaskContext): Iterator[InternalRow] = {
+    val otherFilter: (InternalRow) => Boolean = {
       if (otherFilters.isDefined) {
         if (codegenEnabled) {
           GeneratePredicate.generate(otherFilters.get, finalOutput)
@@ -61,7 +66,7 @@ class HBaseCoprocessorSQLReaderRDD(var relation: HBaseRelation,
     val results: java.util.ArrayList[Cell] = new java.util.ArrayList[Cell]()
     val row = new GenericMutableRow(finalOutput.size)
 
-    val iterator = new Iterator[Row] {
+    val iterator = new Iterator[InternalRow] {
       override def hasNext: Boolean = {
         if (!finished) {
           if (!gotNext) {
@@ -77,7 +82,7 @@ class HBaseCoprocessorSQLReaderRDD(var relation: HBaseRelation,
         !finished
       }
 
-      override def next(): Row = {
+      override def next(): InternalRow = {
         if (hasNext) {
           gotNext = false
           relation.buildRowInCoprocessor(projections, results, row)
@@ -107,7 +112,7 @@ class HBaseCoprocessorSQLReaderRDD(var relation: HBaseRelation,
     Array()
   }
 
-  override def compute(split: Partition, context: TaskContext): Iterator[Row] = {
+  override def compute(split: Partition, context: TaskContext): Iterator[InternalRow] = {
     scanner = split.asInstanceOf[HBasePartition].newScanner
     createIterator(context)
   }
@@ -115,9 +120,13 @@ class HBaseCoprocessorSQLReaderRDD(var relation: HBaseRelation,
 
 abstract class BaseRegionScanner extends RegionScanner {
 
+  override def getBatch = 0
+
   override def isFilterDone = false
 
-  override def next(result: java.util.List[Cell], limit: Int) = next(result)
+  override def next(result: java.util.List[Cell], scannerContext: ScannerContext): Boolean = {
+    next(result)
+  }
 
   override def reseek(row: Array[Byte]) = throw new DoNotRetryIOException("Unsupported")
 
@@ -125,7 +134,9 @@ abstract class BaseRegionScanner extends RegionScanner {
 
   override def nextRaw(result: java.util.List[Cell]) = next(result)
 
-  override def nextRaw(result: java.util.List[Cell], limit: Int) = next(result, limit)
+  override def nextRaw(result: java.util.List[Cell], scannerContext: ScannerContext) = {
+    next(result, scannerContext)
+  }
 }
 
 class SparkSqlRegionObserver extends BaseRegionObserver {
@@ -141,19 +152,35 @@ class SparkSqlRegionObserver extends BaseRegionObserver {
       super.postScannerOpen(e, scan, s)
     } else {
       logger.debug("Work with coprocessor")
+      if (SparkEnv.get == null) {
+          val sparkConf = new SparkConf(true).set("spark.driver.host", "127.0.0.1").set("spark.driver.port", "0")
+          val newSparkEnv = SparkEnv.createDriverEnv(sparkConf, false, new LiveListenerBus)
+          SparkEnv.set(newSparkEnv)
+      }
+
       val partitionIndex: Int = Bytes.toInt(serializedPartitionIndex)
       val serializedOutputDataType = scan.getAttribute(CoprocessorConstants.COTYPE)
       val outputDataType: Seq[DataType] =
         HBaseSerializer.deserialize(serializedOutputDataType).asInstanceOf[Seq[DataType]]
 
       val serializedRDD = scan.getAttribute(CoprocessorConstants.COKEY)
-      val subPlanRDD: RDD[Row] = HBaseSerializer.deserialize(serializedRDD).asInstanceOf[RDD[Row]]
+      val subPlanRDD: RDD[InternalRow] = HBaseSerializer.deserialize(serializedRDD).asInstanceOf[RDD[InternalRow]]
 
       val taskParaInfo = scan.getAttribute(CoprocessorConstants.COTASK)
       val (stageId, partitionId, taskAttemptId, attemptNumber) =
         HBaseSerializer.deserialize(taskParaInfo).asInstanceOf[(Int, Int, Long, Int)]
-      val taskContext = new TaskContextImpl(
-        stageId, partitionId, taskAttemptId, attemptNumber, null, false, new TaskMetrics)
+      val taskMemoryManager = new TaskMemoryManager(SparkEnv.get.executorMemoryManager)
+      val internalAccumulators = Seq(
+        // Execution memory refers to the memory used by internal data structures created
+        // during shuffles, aggregations and joins. The value of this accumulator should be
+        // approximately the sum of the peak sizes across all such data structures created
+        // in this task. For SQL jobs, this only tracks all unsafe operators and ExternalSort.
+        new Accumulator(
+          0L, AccumulatorParam.LongAccumulatorParam, Some(InternalAccumulator.PEAK_EXECUTION_MEMORY), internal = true)
+      )
+      val taskContext = new TaskContextInHBase(
+        stageId, partitionId, taskAttemptId, attemptNumber, taskMemoryManager, internalAccumulators)
+      TaskContext.setTaskContext(taskContext)
 
       val regionInfo = s.getRegionInfo
       val startKey = if (regionInfo.getStartKey.isEmpty) None else Some(regionInfo.getStartKey)
@@ -171,13 +198,18 @@ class SparkSqlRegionObserver extends BaseRegionObserver {
         override def close(): Unit = s.close()
 
         override def next(results: java.util.List[Cell]): Boolean = {
+          val curTaskContext = TaskContext.get()
+          if (curTaskContext == null ||
+            curTaskContext.taskAttemptId() != taskAttemptId) {
+            TaskContext.setTaskContext(taskContext)
+          }
           val hasMore: Boolean = result.hasNext
           if (hasMore) {
-            val nextRow = result.next()
+            val nextRow:InternalRow = result.next()
             val numOfCells = outputDataType.length
             for (i <- 0 until numOfCells) {
-              val data = nextRow(i)
               val dataType = outputDataType(i)
+              val data = nextRow.get(i, dataType)
               val dataOfBytes: HBaseRawType = {
                 if (data == null) null else DataTypeUtils.dataToBytes(data, dataType)
               }

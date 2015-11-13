@@ -18,12 +18,21 @@
 package org.apache.spark.sql.hbase
 
 import org.apache.spark.sql.SQLConf
+import org.apache.spark.sql.SQLConf.SQLConfEntry
 
 object HBaseSQLConf {
-  val PARTITION_EXPIRATION = "spark.sql.hbase.partition.expiration"
-  val SCANNER_FETCH_SIZE = "spark.sql.hbase.scanner.fetchsize"
-  val USE_COPROCESSOR = "spark.sql.hbase.coprocessor"
-  val USE_CUSTOMFILTER = "spark.sql.hbase.customfilter"
+
+  val PARTITION_EXPIRATION = SQLConfEntry.longConf("spark.sql.hbase.partition.expiration",
+    defaultValue = Some(600L))
+
+  val SCANNER_FETCH_SIZE = SQLConfEntry.intConf("spark.sql.hbase.scanner.fetchsize",
+    defaultValue = Some(100))
+
+  val USE_COPROCESSOR = SQLConfEntry.booleanConf("spark.sql.hbase.coprocessor",
+    defaultValue = Some(true))
+
+  val USE_CUSTOMFILTER = SQLConfEntry.booleanConf("spark.sql.hbase.customfilter",
+    defaultValue = Some(true))
 }
 
 /**
@@ -38,8 +47,11 @@ private[hbase] class HBaseSQLConf extends SQLConf {
   import HBaseSQLConf._
 
   /** The expiration of cached partition (i.e., region) info; defaults to 10 minutes . */
-  private[hbase] def partitionExpiration: Long = getConf(PARTITION_EXPIRATION, "600").toLong
-  private[hbase] def scannerFetchSize: Int = getConf(SCANNER_FETCH_SIZE, "1000").toInt
-  private[hbase] def useCoprocessor: Boolean = getConf(USE_COPROCESSOR, "true").toBoolean
-  private[hbase] def useCustomFilter: Boolean = getConf(USE_CUSTOMFILTER, "true").toBoolean
+  private[hbase] def partitionExpiration: Long = getConf(PARTITION_EXPIRATION)
+
+  private[hbase] def scannerFetchSize: Int = getConf(SCANNER_FETCH_SIZE)
+
+  private[hbase] def useCoprocessor: Boolean = getConf(USE_COPROCESSOR)
+
+  private[hbase] def useCustomFilter: Boolean = getConf(USE_CUSTOMFILTER)
 }
