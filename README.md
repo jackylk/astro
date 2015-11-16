@@ -46,7 +46,7 @@ $ mvn clean install
 
 First, add the path of spark-hbase jar to the hbase-env.sh in $HBASE_HOME/conf directory, as follows:
 ```
-HBASE_CLASSPATH=$HBASE_CLASSPATH:/spark-hbase-root-dir/target/spark-sql-on-hbase-1.0.0.jar
+HBASE_CLASSPATH=$HBASE_CLASSPATH:/spark-hbase-root-dir/target/astro-project-0.10.0.jar
 ```
 Then, register the coprocessor service 'CheckDirEndPoint' to hbase-site.xml in the same directory, as follows:
 ```

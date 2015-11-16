@@ -33,7 +33,7 @@ fi
 
 export FWDIR=$SPARK_HOME
 export ASTRO_SOURCE="$(cd "`dirname "$0"`"/..; pwd)"
-export JAR="$ASTRO_SOURCE/target/spark-sql-on-hbase-1.0.0.jar"
+export JAR="$ASTRO_SOURCE/target/astro-project-0.10.0.jar"
 
 function usage {
   if [ -n "$1" ]; then
