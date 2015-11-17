@@ -1,5 +1,5 @@
 
-## Astro: High performance SQL layer over HBase by using Spark SQL framework
+## Astro: Fast SQL on HBase using SparkSQL
 
 Astro is fully distributed SQL engine on HBase by leveraging Spark ecosystem, Apache HBase is a distributed Key-Value store of data on HDFS, but its access mechanism is very primitive and only through client-side APIs, means low productivity and write complex program. SQL accesses to HBase data are available through Map/Reduce or interfaces mechanisms such as Apache Hive and Impala, or some “native” SQL technologies like Apache Phoenix, only be partial distributed, and could not utilize spark full ecosystem.
 ```
