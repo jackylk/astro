@@ -76,7 +76,7 @@ To run a python script, the PYTHONPATH environment should be set to the "python"
 export PYTHONPATH=/root-of-Spark-HBase/python
 ```
 
-Note that the shell commands are not included in the Zip file of the Spark release. They are for developers' use only for this version of 0.1.0. Instead, users can use "$SPARK_HOME/bin/spark-shell --packages HuaweiBigData/astro-<version>" for SQL shell or "$SPARK_HOME/bin/pyspark --packages HuaweiBigData/astro-<version>" for Pythin shell.
+Note that the shell commands are not included in the Zip file of the Spark release. They are for developers' use only for this version of 0.1.0. Instead, users can use "$SPARK_HOME/bin/spark-shell --packages HuaweiBigData/astro-{version}" for SQL shell or "$SPARK_HOME/bin/pyspark --packages HuaweiBigData/astro-{version}" for Pythin shell.
 
 ## Running Tests
 
