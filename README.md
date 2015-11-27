@@ -37,7 +37,7 @@ $ mvn clean install
 
 First, add the path of spark-hbase jar to the hbase-env.sh in $HBASE_HOME/conf directory, as follows:
 ```
-HBASE_CLASSPATH=$HBASE_CLASSPATH:/spark-hbase-root-dir/target/astro-project-0.1.0.jar
+HBASE_CLASSPATH=$HBASE_CLASSPATH:/spark-hbase-root-dir/target/astro-project-<version>.jar
 ```
 Then, register the coprocessor service 'CheckDirEndPoint' to hbase-site.xml in the same directory, as follows:
 ```
@@ -60,7 +60,7 @@ The easiest way to start using Spark HBase is through the Scala shell:
 
 First, add the spark-hbase jar to the SPARK_CLASSPATH in the $SPARK_HOME/conf directory, as follows:
 ```
-SPARK_CLASSPATH=$SPARK_CLASSPATH:/spark-hbase-root-dir/target/astro-project-0.1.0.jar
+SPARK_CLASSPATH=$SPARK_CLASSPATH:/spark-hbase-root-dir/target/astro-project-<version>.jar
 ```
 Then go to the spark-hbase installation directory and issue
 ```
@@ -76,7 +76,7 @@ To run a python script, the PYTHONPATH environment should be set to the "python"
 export PYTHONPATH=/root-of-Spark-HBase/python
 ```
 
-Note that the shell commands are not included in the Zip file of the Spark release. They are for developers' use only for this version of 1.0.0. Instead, users can use "$SPARK_HOME/bin/spark-shell --packages HuaweiBigData/astro-0.1.0" for SQL shell or "$SPARK_HOME/bin/pyspark --packages HuaweiBigData/astro-0.1.0" for Pythin shell.
+Note that the shell commands are not included in the Zip file of the Spark release. They are for developers' use only for this version of 0.1.0. Instead, users can use "$SPARK_HOME/bin/spark-shell --packages HuaweiBigData/astro-{version}" for SQL shell or "$SPARK_HOME/bin/pyspark --packages HuaweiBigData/astro-{version}" for Pythin shell.
 
 ## Running Tests
 
