@@ -9,9 +9,9 @@ Astro =    SQL on HBase +
 ```
 Learn more about Astro at:[http://huaweibigdata.github.io/astro/](http://huaweibigdata.github.io/astro/)
 
-## Building Spark HBase
+## Building Astro
 
-Spark HBase is built using [Apache Maven](http://maven.apache.org/).
+Astro is built using [Apache Maven](http://maven.apache.org/).
 
 I. Clone and build HuaweiBigData/astro
 ```
@@ -51,7 +51,7 @@ Then, register the coprocessor service 'CheckDirEndPoint' to hbase-site.xml in t
 
 ## Interactive Scala Shell
 
-The easiest way to start using Spark HBase is through the Scala shell:
+The easiest way to start using Astro is through the Scala shell:
 ```
 ./bin/hbase-sql
 ```
@@ -60,7 +60,7 @@ The easiest way to start using Spark HBase is through the Scala shell:
 
 First, add the spark-hbase jar to the SPARK_CLASSPATH in the $SPARK_HOME/conf directory, as follows:
 ```
-SPARK_CLASSPATH=$SPARK_CLASSPATH:/spark-hbase-root-dir/target/astro-project-<version>.jar
+SPARK_CLASSPATH=$SPARK_CLASSPATH:/astro-root-dir/target/astro-project-<version>.jar
 ```
 Then go to the spark-hbase installation directory and issue
 ```
@@ -68,19 +68,19 @@ Then go to the spark-hbase installation directory and issue
 ```
 A successfull message is as follows:
 
-   You are using Spark SQL on HBase!!!
+   You are using Astro!!!
    HBaseSQLContext available as hsqlContext.
 
 To run a python script, the PYTHONPATH environment should be set to the "python" directory of the Spark-HBase installation. For example,
 ```
-export PYTHONPATH=/root-of-Spark-HBase/python
+export PYTHONPATH=/astro-root-dir/python
 ```
 
 Note that the shell commands are not included in the Zip file of the Spark release. They are for developers' use only for this version of 0.1.0. Instead, users can use "$SPARK_HOME/bin/spark-shell --packages HuaweiBigData/astro-{version}" for SQL shell or "$SPARK_HOME/bin/pyspark --packages HuaweiBigData/astro-{version}" for Pythin shell.
 
 ## Running Tests
 
-Testing first requires [building Spark HBase](#building-spark-hbase). Once Spark HBase is built ...
+Testing first requires [building Astro](#building-astro). Once Astro is built ...
 
 Run all test suites from Maven:
 ```
@@ -92,12 +92,12 @@ mvn -Phbase,hadoop-2.4 test -DwildcardSuites=org.apache.spark.sql.hbase.BasicQue
 ```
 ## IDE Setup
 
-We use IntelliJ IDEA for Spark HBase development. You can get the community edition for free and install the JetBrains Scala plugin from Preferences > Plugins.
+We use IntelliJ IDEA for Astro development. You can get the community edition for free and install the JetBrains Scala plugin from Preferences > Plugins.
 
-To import the current Spark HBase project for IntelliJ:
+To import the current Astro project for IntelliJ:
 
 1. Download IntelliJ and install the Scala plug-in for IntelliJ. You may also need to install Maven plug-in for IntelliJ.
-2. Go to "File -> Import Project", locate the Spark HBase source directory, and select "Maven Project".
+2. Go to "File -> Import Project", locate the Astro source directory, and select "Maven Project".
 3. In the Import Wizard, select "Import Maven projects automatically" and leave other settings at their default. 
 4. Make sure some specific profiles are enabled. Select corresponding Hadoop version, "maven3" and also"hbase" in order to get dependencies.
 5. Leave other settings at their default and you should be able to start your development.
