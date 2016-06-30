@@ -15,34 +15,24 @@
  * limitations under the License.
  */
 
-package org.apache.spark.sql.hbase.execution
+package org.apache.spark.sql.hbase.catalyst.logical
 
 import org.apache.spark.annotation.DeveloperApi
-import org.apache.spark.rdd.RDD
-import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.expressions._
-import org.apache.spark.sql.catalyst.plans.physical.RangePartitioning
-import org.apache.spark.sql.execution.LeafNode
-import org.apache.spark.sql.hbase._
+import org.apache.spark.sql.catalyst.plans.logical.{UnaryNode, LogicalPlan}
 
-/**
- * :: DeveloperApi ::
- * The HBase table scan operator.
- */
 @DeveloperApi
-case class HBaseSQLTableScan(
-                              relation: HBaseRelation,
-                              output: Seq[Attribute],
-                              result: RDD[InternalRow]) extends LeafNode {
-  override def outputPartitioning = {
-    var ordering = List[SortOrder]()
-    for (key <- relation.partitionKeys) {
-      ordering = ordering :+ SortOrder(key, Ascending)
-    }
-    RangePartitioning(ordering.toSeq, relation.partitions.size)
-  }
+case class UpdateTable(
+    tableName: String,
+    columnsToUpdate: Seq[Expression],
+    values: Seq[String],
+    child: LogicalPlan) extends UnaryNode {
+  override lazy val resolved: Boolean = columnsToUpdate.forall(_.resolved) && childrenResolved
+  override def output: Seq[Attribute] = Seq.empty
+}
 
-  override protected def doExecute(): RDD[InternalRow] = result
-
-//  override def outputsUnsafeRows:Boolean = true
+@DeveloperApi
+case class DeleteFromTable(tableName: String, child: LogicalPlan) extends UnaryNode {
+  override lazy val resolved: Boolean = childrenResolved
+  override def output: Seq[Attribute] = Seq.empty
 }

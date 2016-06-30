@@ -55,7 +55,7 @@ class HBaseTpcMiniTestSuite extends TestBase {
     /**
      * drop the existing logical table if it exists
      */
-    if (TestHbase.catalog.checkLogicalTableExist(tableName)) {
+    if (TestHbase.hbaseCatalog.checkLogicalTableExist(tableName)) {
       val dropSql = "DROP TABLE " + tableName
       try {
         runSql(dropSql)
@@ -65,59 +65,65 @@ class HBaseTpcMiniTestSuite extends TestBase {
       }
     }
 
+    val colsMapping =
+      "ss_sold_date_sk=f.ss_sold_date_sk, " +
+      "ss_sold_time_sk=f.ss_sold_time_sk, " +
+      "ss_customer_sk=f.ss_customer_sk, " +
+      "ss_cdemo_sk=f.ss_cdemo_sk, " +
+      "ss_hdemo_sk=f.ss_hdemo_sk, " +
+      "ss_addr_sk=f.ss_addr_sk, " +
+      "ss_store_sk=f.ss_store_sk, " +
+      "ss_promo_sk=f.ss_promo_sk, " +
+      "ss_quantity=f.ss_quantity, " +
+      "ss_wholesale_cost=f.ss_wholesale_cost, " +
+      "ss_list_price=f.ss_list_price, " +
+      "ss_sales_price=f.ss_sales_price, " +
+      "ss_ext_discount_amt=f.ss_ext_discount_amt, " +
+      "ss_ext_sales_price=f.ss_ext_sales_price, " +
+      "ss_ext_wholesale_cost=f.ss_ext_wholesale_cost, " +
+      "ss_ext_list_price=f.ss_ext_list_price, " +
+      "ss_ext_tax=f.ss_ext_tax, " +
+      "ss_coupon_amt=f.ss_coupon_amt, " +
+      "ss_net_paid=f.ss_net_paid, " +
+      "ss_net_paid_inc_tax=f.ss_net_paid_inc_tax, " +
+      "ss_net_profit=f.ss_net_profit"
+
     /**
      * create table
      */
     val createSql =
       s"""CREATE TABLE store_sales(
-        ss_sold_date_sk INTEGER,
-        ss_sold_time_sk INTEGER,
-        ss_item_sk INTEGER,
-        ss_customer_sk INTEGER,
-        ss_cdemo_sk INTEGER,
-        ss_hdemo_sk INTEGER,
-        ss_addr_sk INTEGER,
-        ss_store_sk INTEGER,
-        ss_promo_sk INTEGER,
-        ss_ticket_number INTEGER,
-        ss_quantity INTEGER,
-        ss_wholesale_cost FLOAT,
-        ss_list_price FLOAT,
-        ss_sales_price FLOAT,
-        ss_ext_discount_amt	FLOAT,
-        ss_ext_sales_price FLOAT,
-        ss_ext_wholesale_cost FLOAT,
-        ss_ext_list_price FLOAT,
-        ss_ext_tax FLOAT,
-        ss_coupon_amt FLOAT,
-        ss_net_paid FLOAT,
-        ss_net_paid_inc_tax FLOAT,
-        ss_net_profit FLOAT,
-        PRIMARY KEY(ss_item_sk, ss_ticket_number))
-        MAPPED BY
-        (store_sales_htable, COLS=[
-          ss_sold_date_sk=f.ss_sold_date_sk,
-          ss_sold_time_sk=f.ss_sold_time_sk,
-          ss_customer_sk=f.ss_customer_sk,
-          ss_cdemo_sk=f.ss_cdemo_sk,
-          ss_hdemo_sk=f.ss_hdemo_sk,
-          ss_addr_sk=f.ss_addr_sk,
-          ss_store_sk=f.ss_store_sk,
-          ss_promo_sk=f.ss_promo_sk,
-          ss_quantity=f.ss_quantity,
-          ss_wholesale_cost=f.ss_wholesale_cost,
-          ss_list_price=f.ss_list_price,
-          ss_sales_price=f.ss_sales_price,
-          ss_ext_discount_amt=f.ss_ext_discount_amt,
-          ss_ext_sales_price=f.ss_ext_sales_price,
-          ss_ext_wholesale_cost=f.ss_ext_wholesale_cost,
-          ss_ext_list_price=f.ss_ext_list_price,
-          ss_ext_tax=f.ss_ext_tax,
-          ss_coupon_amt=f.ss_coupon_amt,
-          ss_net_paid=f.ss_net_paid,
-          ss_net_paid_inc_tax=f.ss_net_paid_inc_tax,
-          ss_net_profit=f.ss_net_profit
-        ])""".stripMargin
+         |  ss_sold_date_sk INTEGER,
+         |  ss_sold_time_sk INTEGER,
+         |  ss_item_sk INTEGER,
+         |  ss_customer_sk INTEGER,
+         |  ss_cdemo_sk INTEGER,
+         |  ss_hdemo_sk INTEGER,
+         |  ss_addr_sk INTEGER,
+         |  ss_store_sk INTEGER,
+         |  ss_promo_sk INTEGER,
+         |  ss_ticket_number INTEGER,
+         |  ss_quantity INTEGER,
+         |  ss_wholesale_cost FLOAT,
+         |  ss_list_price FLOAT,
+         |  ss_sales_price FLOAT,
+         |  ss_ext_discount_amt	FLOAT,
+         |  ss_ext_sales_price FLOAT,
+         |  ss_ext_wholesale_cost FLOAT,
+         |  ss_ext_list_price FLOAT,
+         |  ss_ext_tax FLOAT,
+         |  ss_coupon_amt FLOAT,
+         |  ss_net_paid FLOAT,
+         |  ss_net_paid_inc_tax FLOAT,
+         |  ss_net_profit FLOAT
+         |)
+         |USING org.apache.spark.sql.hbase.HBaseSource
+         |OPTIONS(
+         |  tableName "store_sales",
+         |  hbaseTableName "store_sales_htable",
+         |  keyCols "ss_item_sk, ss_ticket_number",
+         |  colsMapping "$colsMapping"
+         |)""".stripMargin
 
     try {
       runSql(createSql)
@@ -192,9 +198,29 @@ class HBaseTpcMiniTestSuite extends TestBase {
   }
 
   test("Query 7") {
-    val sql = "SELECT ss_item_sk, ss_ticket_number, sum(ss_wholesale_cost) as sum_wholesale_cost FROM store_sales WHERE ss_item_sk > 4000 AND ss_item_sk <= 5000 GROUP BY ss_item_sk, ss_ticket_number"
+    val sql =
+      s"""SELECT ss_item_sk, ss_ticket_number, sum(ss_wholesale_cost) as sum_wholesale_cost
+         |FROM store_sales
+         |WHERE ss_item_sk > 4000 AND ss_item_sk <= 5000
+         |GROUP BY ss_item_sk, ss_ticket_number"""
+        .stripMargin
     val rows = runSql(sql)
     assert(rows.length == 5)
+  }
+
+  test("Query 7.1") {
+    val sql =
+      s"""SELECT ss_item_sk, ss_ticket_number, sum(ss_wholesale_cost) as sum_wholesale_cost
+         |FROM store_sales
+         |WHERE ss_item_sk > 17182
+         |AND ss_item_sk <= 17183
+         |GROUP BY ss_item_sk, ss_ticket_number"""
+        .stripMargin
+    val rows = runSql(sql)
+    assert(rows.length == 1)
+    assert(rows(0)(0) == 17183)
+    assert(rows(0)(1) == 6)
+    assert(rows(0)(2) == null) // null-input -> sum() -> null-output
   }
 
   test("Query 8") {
@@ -240,9 +266,27 @@ class HBaseTpcMiniTestSuite extends TestBase {
   }
 
   test("Query 15") {
-    val sql = "SELECT count(ss_customer_sk) as count_customer FROM store_sales WHERE ss_customer_sk IN (1,25,50,75,100)"
+    val sql = "SELECT ss_customer_sk FROM store_sales WHERE ss_customer_sk IN (1,25,50,75,100)"
     val rows = runSql(sql)
-    assert(rows(0).get(0) == 0)
+    assert(rows.size == 0)
+  }
+
+  test("Query 15.1") {
+    val sql = "SELECT ss_customer_sk FROM store_sales WHERE ss_customer_sk IN (1,194284)"
+    val rows = runSql(sql)
+    assert(rows.size == 14)
+  }
+
+  test("Query 15.2") {
+    val sql = "SELECT ss_customer_sk FROM store_sales WHERE ss_customer_sk IN (1,225006)"
+    val rows = runSql(sql)
+    assert(rows.size == 14)
+  }
+
+  test("Query 15.3") {
+    val sql = "SELECT ss_customer_sk FROM store_sales WHERE ss_customer_sk IN (1,194284,225006)"
+    val rows = runSql(sql)
+    assert(rows.size == 28)
   }
 
   test("Query 16") {

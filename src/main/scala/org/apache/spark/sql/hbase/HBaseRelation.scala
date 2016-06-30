@@ -17,63 +17,108 @@
 package org.apache.spark.sql.hbase
 
 import org.apache.hadoop.conf.Configuration
-import org.apache.hadoop.hbase.client.{Get, HTable, Put, Result, Scan}
+import org.apache.hadoop.hbase.client._
 import org.apache.hadoop.hbase.filter._
 import org.apache.hadoop.hbase.util.Bytes
 import org.apache.hadoop.hbase.{HBaseConfiguration, _}
 import org.apache.log4j.Logger
 import org.apache.spark.TaskContext
 import org.apache.spark.rdd.RDD
-import org.apache.spark.sql.{DataFrame, SQLContext}
+import org.apache.spark.sql.catalyst.{expressions, InternalRow}
+import org.apache.spark.sql.execution.datasources.LogicalRelation
+import org.apache.spark.sql.{Row, DataFrame, SQLContext}
 import org.apache.spark.sql.catalyst.expressions._
 import org.apache.spark.sql.hbase.catalyst.NotPusher
 import org.apache.spark.sql.hbase.catalyst.expressions.PartialPredicateOperations.partialPredicateReducer
 import org.apache.spark.sql.hbase.types.Range
 import org.apache.spark.sql.hbase.util._
-import org.apache.spark.sql.sources.{BaseRelation, CatalystScan, InsertableRelation, LogicalRelation, RelationProvider}
+import org.apache.spark.sql.sources._
 import org.apache.spark.sql.types._
+import org.apache.spark.unsafe.types.UTF8String
 
 import scala.collection.JavaConversions._
 import scala.collection.JavaConverters._
 import scala.collection.mutable.{ArrayBuffer, ListBuffer}
 
-class HBaseSource extends RelationProvider {
+class HBaseSource extends SchemaRelationProvider {
   // Returns a new HBase relation with the given parameters
   override def createRelation(
                                sqlContext: SQLContext,
-                               parameters: Map[String, String]): BaseRelation = {
-    val catalog = sqlContext.catalog.asInstanceOf[HBaseCatalog]
+                               parameters: Map[String, String],
+                               schema: StructType): BaseRelation = {
 
     val tableName = parameters("tableName")
-    val rawNamespace = parameters("namespace")
     val hbaseTable = parameters("hbaseTableName")
-    val encodingFormat = parameters("encodingFormat")
-    val colsSeq = parameters("colsSeq").split(",")
-    val keyCols = parameters("keyCols").split(";")
-      .map { case c => val cols = c.split(","); (cols(0), cols(1))}
-    val nonKeyCols = parameters("nonKeyCols").split(";")
-      .filterNot(_ == "")
-      .map { case c => val cols = c.split(","); (cols(0), cols(1), cols(2), cols(3))}
+    // This is HBase table namespace, not logical table's namespace, and actually we don't use it,
+    // may be it always is the default namespace.
+    val rawNamespace = if (hbaseTable.contains("\\.")) {
+      hbaseTable.split("\\.")(0)
+    } else {
+      ""
+    }
+    val colsSeq = schema.fieldNames
+    val keyCols = parameters("keyCols").split(",").map(_.trim)
+    val colsMapping = parameters("colsMapping").split(",").map(_.trim)
+    val encodingFormat =
+      parameters.get("encodingFormat") match {
+        case Some(encoding) => encoding.toLowerCase
+        case None => "binaryformat"
+      }
 
-    val keyMap: Map[String, String] = keyCols.toMap
+    val infoMap: Map[String, (String, String)] =
+      colsMapping.map { colMapping =>
+        val mapping = colMapping.split("=")
+        if (mapping.length != 2) {
+          throw new Exception(s"Syntax Error of column mapping($colMapping), " +
+            "(sqlCol=colFamily.colQualifier, needs \"=\")")
+        }
+        if (!colsSeq.contains(mapping(0))) {
+          throw new Exception(s"Syntax Error of column mapping($colMapping), " +
+            s"${mapping(0)} is not a column")
+        }
+        val info = mapping(1).split("\\.")
+        if (info.length != 2) {
+          throw new Exception(s"Syntax Error of column mapping($colMapping), " +
+            "(sqlCol=colFamily.colQualifier, needs \".\")")
+        }
+        mapping(0) ->(info(0), info(1))
+      }.toMap
+
+    val divideTableColsByKeyOrNonkey = schema.fields.partition {
+      case structField @ StructField(name, _, _, _) =>
+        keyCols.contains(name)
+    }
+
+    val keyColsWithDataType = divideTableColsByKeyOrNonkey._1.map { structType =>
+      structType.name -> structType.dataType
+    }.toMap
+
+    val nonKeyColsWithDataType = divideTableColsByKeyOrNonkey._2.map{ structType =>
+      val (family, qualifier) = infoMap.get(structType.name).get
+      (structType.name, structType.dataType, family, qualifier)
+    }
+
     val allColumns = colsSeq.map {
       case name =>
-        if (keyMap.contains(name)) {
+        if (keyCols.contains(name)) {
           KeyColumn(
             name,
-            catalog.getDataType(keyMap.get(name).get),
-            keyCols.indexWhere(_._1 == name))
+            keyColsWithDataType.get(name).get,
+            keyCols.indexWhere(_ == name)
+          )
         } else {
-          val nonKeyCol = nonKeyCols.find(_._1 == name).get
+          val nonKeyCol = nonKeyColsWithDataType.find(_._1 == name).get
           NonKeyColumn(
             name,
-            catalog.getDataType(nonKeyCol._2),
+            nonKeyCol._2,
             nonKeyCol._3,
             nonKeyCol._4
           )
         }
     }
-    catalog.createTable(tableName, rawNamespace, hbaseTable, allColumns, null, encodingFormat)
+
+    val hbaseCatalog = sqlContext.asInstanceOf[HBaseSQLContext].hbaseCatalog
+    hbaseCatalog.createTable(tableName, rawNamespace, hbaseTable, allColumns, null, encodingFormat)
   }
 }
 
@@ -94,7 +139,7 @@ private[hbase] case class HBaseRelation(
                                          deploySuccessfully: Option[Boolean],
                                          encodingFormat: String = "binaryformat")
                                        (@transient var context: SQLContext)
-  extends BaseRelation with CatalystScan with InsertableRelation with Serializable {
+  extends BaseRelation with InsertableRelation with Serializable {
   @transient lazy val logger = Logger.getLogger(getClass.getName)
 
   @transient lazy val keyColumns = allColumns.filter(_.isInstanceOf[KeyColumn])
@@ -117,8 +162,7 @@ private[hbase] case class HBaseRelation(
     case _ => BinaryBytesUtils
   }
 
-  lazy val partitionKeys = keyColumns.map(col =>
-    logicalRelation.output.find(_.name == col.sqlName).get)
+  lazy val partitionKeys = keyColumns.map(col => output.find(_.name == col.sqlName).get)
 
   @transient lazy val columnMap = allColumns.map {
     case key: KeyColumn => (key.sqlName, key.order)
@@ -192,7 +236,7 @@ private[hbase] case class HBaseRelation(
   // corresponding logical relation
   @transient lazy val logicalRelation = LogicalRelation(this)
 
-  lazy val output = logicalRelation.output
+  var output: Seq[AttributeReference] = logicalRelation.output
 
   @transient lazy val dts: Seq[DataType] = allColumns.map(_.dataType)
 
@@ -294,7 +338,7 @@ private[hbase] case class HBaseRelation(
    */
   def buildCPRFilterList(output: Seq[Attribute], filterPred: Option[Expression],
                          cprs: Seq[MDCriticalPointRange[_]]):
-  (Option[Filter], Option[Expression]) = {
+  (Option[filter.Filter], Option[Expression]) = {
     val cprFilterList: FilterList = new FilterList(FilterList.Operator.MUST_PASS_ONE)
     var expressionList: List[Expression] = List[Expression]()
     var anyNonpushable = false
@@ -319,7 +363,7 @@ private[hbase] case class HBaseRelation(
 
         val left = filterPred.get.references.find(_.name == keyCol.sqlName).get
         val right = Literal.create(item._1, item._2)
-        EqualTo(left, right)
+        expressions.EqualTo(left, right)
       }
 
       val tailExpression: Expression = {
@@ -330,34 +374,34 @@ private[hbase] case class HBaseRelation(
         val endInclusive = cpr.lastRange.endInclusive
         if (cpr.lastRange.isPoint) {
           val right = Literal.create(cpr.lastRange.start.get, cpr.lastRange.dt)
-          EqualTo(left, right)
+          expressions.EqualTo(left, right)
         } else if (cpr.lastRange.start.isDefined && cpr.lastRange.end.isDefined) {
           var right = Literal.create(cpr.lastRange.start.get, cpr.lastRange.dt)
           val leftExpression = if (startInclusive) {
-            GreaterThanOrEqual(left, right)
+            expressions.GreaterThanOrEqual(left, right)
           } else {
-            GreaterThan(left, right)
+            expressions.GreaterThan(left, right)
           }
           right = Literal.create(cpr.lastRange.end.get, cpr.lastRange.dt)
           val rightExpress = if (endInclusive) {
-            LessThanOrEqual(left, right)
+            expressions.LessThanOrEqual(left, right)
           } else {
-            LessThan(left, right)
+            expressions.LessThan(left, right)
           }
-          And(leftExpression, rightExpress)
+          expressions.And(leftExpression, rightExpress)
         } else if (cpr.lastRange.start.isDefined) {
           val right = Literal.create(cpr.lastRange.start.get, cpr.lastRange.dt)
           if (startInclusive) {
-            GreaterThanOrEqual(left, right)
+            expressions.GreaterThanOrEqual(left, right)
           } else {
-            GreaterThan(left, right)
+            expressions.GreaterThan(left, right)
           }
         } else if (cpr.lastRange.end.isDefined) {
           val right = Literal.create(cpr.lastRange.end.get, cpr.lastRange.dt)
           if (endInclusive) {
-            LessThanOrEqual(left, right)
+            expressions.LessThanOrEqual(left, right)
           } else {
-            LessThan(left, right)
+            expressions.LessThan(left, right)
           }
         } else {
           null
@@ -366,11 +410,11 @@ private[hbase] case class HBaseRelation(
 
       val combinedExpression: Seq[Expression] = headExpression :+ tailExpression
       var andExpression: Expression = combinedExpression.reduceLeft(
-        (e1: Expression, e2: Expression) => And(e1, e2))
+        (e1: Expression, e2: Expression) => expressions.And(e1, e2))
 
       if (nonPushable.isDefined) {
         anyNonpushable = true
-        andExpression = And(andExpression, nonPushable.get)
+        andExpression = expressions.And(andExpression, nonPushable.get)
       }
       expressionList = expressionList :+ andExpression
 
@@ -488,11 +532,11 @@ private[hbase] case class HBaseRelation(
     }
 
     val orExpression = if (anyNonpushable) {
-      Some(expressionList.reduceLeft((e1: Expression, e2: Expression) => Or(e1, e2)))
+      Some(expressionList.reduceLeft((e1: Expression, e2: Expression) => expressions.Or(e1, e2)))
     } else {
       None
     }
-    val finalFilterList: Filter = if (cprFilterList.getFilters.size() == 1) {
+    val finalFilterList: filter.Filter = if (cprFilterList.getFilters.size() == 1) {
       cprFilterList.getFilters.get(0)
     } else if (cprFilterList.getFilters.size() > 1) {
       cprFilterList
@@ -535,7 +579,7 @@ private[hbase] case class HBaseRelation(
    * @param filtersToBeAdded the filter to be added
    * @param operator the operator of the filter to be added
    */
-  private def addToFilterList(filters: java.util.ArrayList[Filter],
+  private def addToFilterList(filters: java.util.ArrayList[filter.Filter],
                               filtersToBeAdded: Option[FilterList],
                               operator: FilterList.Operator) = {
     if (filtersToBeAdded.isDefined) {
@@ -576,8 +620,8 @@ private[hbase] case class HBaseRelation(
     } else {
       val expression = pred.get
       expression match {
-        case And(left, right) =>
-          val filters = new java.util.ArrayList[Filter]
+        case expressions.And(left, right) =>
+          val filters = new java.util.ArrayList[filter.Filter]
           if (left != null) {
             val leftFilterList = buildFilterListFromPred(Some(left))
             addToFilterList(filters, leftFilterList, FilterList.Operator.MUST_PASS_ALL)
@@ -587,8 +631,8 @@ private[hbase] case class HBaseRelation(
             addToFilterList(filters, rightFilterList, FilterList.Operator.MUST_PASS_ALL)
           }
           Some(new FilterList(FilterList.Operator.MUST_PASS_ALL, filters))
-        case Or(left, right) =>
-          val filters = new java.util.ArrayList[Filter]
+        case expressions.Or(left, right) =>
+          val filters = new java.util.ArrayList[filter.Filter]
           if (left != null) {
             val leftFilterList = buildFilterListFromPred(Some(left))
             addToFilterList(filters, leftFilterList, FilterList.Operator.MUST_PASS_ONE)
@@ -614,34 +658,50 @@ private[hbase] case class HBaseRelation(
           } else {
             None
           }
-        case GreaterThan(left: AttributeReference, right: Literal) =>
+        case expressions.In(value@AttributeReference(name, dataType, _, _), list) =>
+          val column = nonKeyColumns.find(_.sqlName == name)
+          if (column.isDefined) {
+            val filterList = new FilterList(FilterList.Operator.MUST_PASS_ONE)
+            for (item <- list) {
+              val filter = new SingleColumnValueFilter(column.get.familyRaw,
+                column.get.qualifierRaw,
+                CompareFilter.CompareOp.EQUAL,
+                DataTypeUtils.getBinaryComparator(bytesUtils.create(dataType),
+                  item.asInstanceOf[Literal]))
+              filterList.addFilter(filter)
+            }
+            Some(filterList)
+          } else {
+            None
+          }
+        case expressions.GreaterThan(left: AttributeReference, right: Literal) =>
           createSingleColumnValueFilter(left, right, CompareFilter.CompareOp.GREATER)
-        case GreaterThan(left: Literal, right: AttributeReference) =>
+        case expressions.GreaterThan(left: Literal, right: AttributeReference) =>
           createSingleColumnValueFilter(right, left, CompareFilter.CompareOp.GREATER)
-        case GreaterThanOrEqual(left: AttributeReference, right: Literal) =>
+        case expressions.GreaterThanOrEqual(left: AttributeReference, right: Literal) =>
           createSingleColumnValueFilter(left, right,
             CompareFilter.CompareOp.GREATER_OR_EQUAL)
-        case GreaterThanOrEqual(left: Literal, right: AttributeReference) =>
+        case expressions.GreaterThanOrEqual(left: Literal, right: AttributeReference) =>
           createSingleColumnValueFilter(right, left,
             CompareFilter.CompareOp.GREATER_OR_EQUAL)
-        case EqualTo(left: AttributeReference, right: Literal) =>
+        case expressions.EqualTo(left: AttributeReference, right: Literal) =>
           createSingleColumnValueFilter(left, right, CompareFilter.CompareOp.EQUAL)
-        case EqualTo(left: Literal, right: AttributeReference) =>
+        case expressions.EqualTo(left: Literal, right: AttributeReference) =>
           createSingleColumnValueFilter(right, left, CompareFilter.CompareOp.EQUAL)
-        case LessThan(left: AttributeReference, right: Literal) =>
+        case expressions.LessThan(left: AttributeReference, right: Literal) =>
           createSingleColumnValueFilter(left, right, CompareFilter.CompareOp.LESS)
-        case LessThan(left: Literal, right: AttributeReference) =>
+        case expressions.LessThan(left: Literal, right: AttributeReference) =>
           createSingleColumnValueFilter(right, left, CompareFilter.CompareOp.LESS)
-        case LessThanOrEqual(left: AttributeReference, right: Literal) =>
+        case expressions.LessThanOrEqual(left: AttributeReference, right: Literal) =>
           createSingleColumnValueFilter(left, right, CompareFilter.CompareOp.LESS_OR_EQUAL)
-        case LessThanOrEqual(left: Literal, right: AttributeReference) =>
+        case expressions.LessThanOrEqual(left: Literal, right: AttributeReference) =>
           createSingleColumnValueFilter(right, left, CompareFilter.CompareOp.LESS_OR_EQUAL)
         case _ => None
       }
     }
   }
 
-  def buildPut(row: Row): Put = {
+  def buildPut(row: InternalRow): Put = {
     // TODO: revisit this using new KeyComposer
     val rowKey: HBaseRawType = null
     new Put(rowKey)
@@ -673,10 +733,15 @@ private[hbase] case class HBaseRelation(
     var puts = new ListBuffer[Put]()
     while (iterator.hasNext) {
       val row = iterator.next()
+      val seq = row.toSeq.map{
+        case s:String => UTF8String.fromString(s)
+        case other => other
+      }
+      val internalRow = InternalRow.fromSeq(seq)
       val rawKeyCol = keyColumns.map(
         kc => {
           val rowColumn = DataTypeUtils.getRowColumnInHBaseRawType(
-            row, kc.ordinal, kc.dataType)
+            internalRow, kc.ordinal, kc.dataType)
           colIndexInBatch += 1
           (rowColumn, kc.dataType)
         }
@@ -686,7 +751,7 @@ private[hbase] case class HBaseRelation(
       nonKeyColumns.foreach(
         nkc => {
           val rowVal = DataTypeUtils.getRowColumnInHBaseRawType(
-            row, nkc.ordinal, nkc.dataType, bytesUtils)
+            internalRow, nkc.ordinal, nkc.dataType, bytesUtils)
           colIndexInBatch += 1
           put.add(nkc.familyRaw, nkc.qualifierRaw, rowVal)
         }
@@ -707,8 +772,51 @@ private[hbase] case class HBaseRelation(
     closeHTable()
   }
 
+  def delete(data: DataFrame) = {
+    sqlContext.sparkContext.runJob(data.rdd, deleteFromHBase _)
+  }
 
-  def buildScan(requiredColumns: Seq[Attribute], filters: Seq[Expression]): RDD[Row] = {
+  def deleteFromHBase(context: TaskContext, iterator: Iterator[Row]) = {
+    // TODO:make the BatchMaxSize configurable
+    val BatchMaxSize = 100
+    var rowIndexInBatch = 0
+
+    // note: this is a hack, we can not use scala list
+    // it will throw UnsupportedOperationException.
+    val deletes = new java.util.ArrayList[Delete]()
+    while (iterator.hasNext) {
+      val row = iterator.next()
+      val seq = row.toSeq.map{
+        case s: String => UTF8String.fromString(s)
+        case other => other
+      }
+      val internalRow = InternalRow.fromSeq(seq)
+      val rawKeyCol = keyColumns.map(
+        kc => {
+          val rowColumn = DataTypeUtils.getRowColumnInHBaseRawType(
+            internalRow, kc.ordinal, kc.dataType)
+          (rowColumn, kc.dataType)
+        }
+      )
+      val key = HBaseKVHelper.encodingRawKeyColumns(rawKeyCol)
+      val delete = new Delete(key)
+      deletes.add(delete)
+      rowIndexInBatch += 1
+      if (rowIndexInBatch >= BatchMaxSize) {
+        htable.delete(deletes)
+        deletes.clear()
+        rowIndexInBatch = 0
+      }
+    }
+    if (deletes.nonEmpty) {
+      htable.delete(deletes)
+      deletes.clear()
+      rowIndexInBatch = 0
+    }
+    closeHTable()
+  }
+
+  def buildScan(requiredColumns: Seq[Attribute], filters: Seq[Expression]): RDD[InternalRow] = {
     require(filters.size < 2, "Internal logical error: unexpected filter list size")
     val filterPredicate = filters.headOption
     new HBaseSQLReaderRDD(
@@ -726,7 +834,7 @@ private[hbase] case class HBaseRelation(
 
   def buildScan(start: Option[HBaseRawType], end: Option[HBaseRawType],
                 predicate: Option[Expression],
-                filters: Option[Filter], otherFilters: Option[Expression],
+                filters: Option[filter.Filter], otherFilters: Option[Expression],
                 useCustomFilter: Boolean,
                 projectionList: Seq[NamedExpression]): Scan = {
     val scan = {
@@ -754,7 +862,7 @@ private[hbase] case class HBaseRelation(
    * @param projectionList the projection list
    * @return the proper scan
    */
-  def addColumnFamiliesToScan(scan: Scan, filters: Option[Filter],
+  def addColumnFamiliesToScan(scan: Scan, filters: Option[filter.Filter],
                               otherFilters: Option[Expression],
                               predicate: Option[Expression],
                               useCustomFilter: Boolean,
@@ -802,7 +910,7 @@ private[hbase] case class HBaseRelation(
         // of c2 so we can restrict the interested qualifiers to "c2" only.
         distinctProjectionList = predicateNameSet.toSeq.distinct
         val boundPred = BindReferences.bindReference(pred, predRefs)
-        val row = new GenericRow(predRefs.size) // an all-null row
+        val row = new GenericInternalRow(predRefs.size) // an all-null row
         val prRes = boundPred.partialReduce(row, predRefs, checkNull = true)
         val (addColumn, nkcols) = prRes match {
           //  At least one existing column has to be fetched to qualify the record,
@@ -902,7 +1010,7 @@ private[hbase] case class HBaseRelation(
 
   def buildRowAfterCoprocessor(projections: Seq[(Attribute, Int)],
                                result: Result,
-                               row: MutableRow): Row = {
+                               row: MutableRow): InternalRow = {
     for (i <- projections.indices) {
       setColumn(result.rawCells()(i), projections(i), row)
     }
@@ -911,7 +1019,7 @@ private[hbase] case class HBaseRelation(
 
   def buildRowInCoprocessor(projections: Seq[(Attribute, Int)],
                             result: java.util.ArrayList[Cell],
-                            row: MutableRow): Row = {
+                            row: MutableRow): InternalRow = {
     def getColumnLatestCell(family: Array[Byte],
                             qualifier: Array[Byte]): Cell = {
       // 0 means equal, >0 means larger, <0 means smaller
@@ -966,7 +1074,7 @@ private[hbase] case class HBaseRelation(
 
   def buildRow(projections: Seq[(Attribute, Int)],
                result: Result,
-               row: MutableRow): Row = {
+               row: MutableRow): InternalRow = {
     lazy val rowKeys = HBaseKVHelper.decodingRawKeyColumns(result.getRow, keyColumns)
     projections.foreach {
       p =>

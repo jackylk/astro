@@ -31,7 +31,7 @@ import org.apache.spark.Logging
 import org.apache.spark.sql.SQLContext
 import org.apache.spark.sql.catalyst.analysis.{Catalog, OverrideCatalog}
 import org.apache.spark.sql.catalyst.plans.logical.{LogicalPlan, Subquery}
-import org.apache.spark.sql.catalyst.{CatalystConf, SimpleCatalystConf}
+import org.apache.spark.sql.catalyst.{TableIdentifier, CatalystConf, SimpleCatalystConf}
 import org.apache.spark.sql.hbase.HBaseCatalog._
 import org.apache.spark.sql.types._
 
@@ -172,11 +172,6 @@ private[hbase] class HBaseCatalog(@transient hbaseContext: SQLContext,
   def createTable(tableName: String, hbaseNamespace: String, hbaseTableName: String,
                   allColumns: Seq[AbstractColumn], splitKeys: Array[Array[Byte]],
                   encodingFormat: String = "binaryformat"): HBaseRelation = {
-    val metadataTable = getMetadataTable
-
-    if (checkLogicalTableExist(tableName, metadataTable)) {
-      throw new Exception(s"The logical table: $tableName already exists")
-    }
 
     // create a new hbase table for the user if not exist
     val nonKeyColumns = allColumns.filter(_.isInstanceOf[NonKeyColumn])
@@ -185,6 +180,7 @@ private[hbase] class HBaseCatalog(@transient hbaseContext: SQLContext,
     if (!checkHBaseTableExists(hbaseTableName)) {
       createHBaseUserTable(hbaseTableName, families, splitKeys,
         hbaseContext.conf.asInstanceOf[HBaseSQLConf].useCoprocessor)
+      logger.info(s"Create user table $hbaseTableName on HBase")
     } else {
       families.foreach {
         case family =>
@@ -194,24 +190,11 @@ private[hbase] class HBaseCatalog(@transient hbaseContext: SQLContext,
       }
     }
 
-    metadataTable.setAutoFlushTo(false)
-
-    val get = new Get(Bytes.toBytes(tableName))
-    val result = if (metadataTable.exists(get)) {
-      throw new Exception(s"row key $tableName exists")
-    } else {
-      val hbaseRelation = HBaseRelation(tableName, hbaseNamespace, hbaseTableName,
-        allColumns, deploySuccessfully, encodingFormat)(hbaseContext)
-      hbaseRelation.setConfig(configuration)
-
-      writeObjectToTable(hbaseRelation, metadataTable)
-
-      relationMapCache.put(processTableName(tableName), hbaseRelation)
-      hbaseRelation
-    }
-
-    metadataTable.close()
-    result
+    val hbaseRelation = HBaseRelation(tableName, hbaseNamespace, hbaseTableName,
+      allColumns, deploySuccessfully, encodingFormat)(hbaseContext)
+    hbaseRelation.setConfig(configuration)
+    hbaseRelation.fetchPartitions()
+    hbaseRelation
   }
 
   def alterTableDropNonKey(tableName: String, columnName: String) = {
@@ -342,7 +325,7 @@ private[hbase] class HBaseCatalog(@transient hbaseContext: SQLContext,
     tables.map((_, false))
   }
 
-  override def refreshTable(databaseName: String, tableName: String): Unit = {
+  override def refreshTable(tableIdent: TableIdentifier): Unit = {
 
   }
 
@@ -462,4 +445,20 @@ object HBaseCatalog {
   private final val MetaData = "metadata"
   private final val ColumnFamily = Bytes.toBytes("colfam")
   private final val QualData = Bytes.toBytes("data")
+
+  def schemaStringFromParts(tableProperties: Map[String, String]): Option[String] = {
+    tableProperties.get("spark.sql.sources.schema.numParts").map { numParts =>
+      val parts = (0 until numParts.toInt).map { index =>
+        val part = tableProperties.get(s"spark.sql.sources.schema.part.$index").orNull
+        if (part == null) {
+          throw new Exception(
+            "Could not read schema from the metastore because it is corrupted " +
+              s"(missing part $index of the schema, $numParts parts are expected).")
+        }
+        part
+      }
+      // Stick all parts back to a single schema string.
+      parts.mkString
+    }
+  }
 }

@@ -23,6 +23,7 @@ import java.util.Date
 
 import org.apache.hadoop.hbase.{HColumnDescriptor, HTableDescriptor, TableExistsException, TableName}
 import org.apache.spark.Logging
+import org.apache.spark.sql.catalyst.TableIdentifier
 import org.apache.spark.sql.catalyst.plans.logical
 import org.apache.spark.sql.catalyst.util._
 import org.apache.spark.sql.{DataFrame, Row}
@@ -98,7 +99,7 @@ abstract class TestBase
     checkAnswer(rdd, Seq(expectedAnswer))
   }
 
-  def runSql(sql: String): Array[Row] = {
+  def runSql(sql: String) = {
     logInfo(sql)
     TestHbase.sql(sql).collect()
   }
@@ -157,6 +158,12 @@ abstract class TestBase
     }
   }
 
+  def dropLogicalTable(tableName: String) = {
+    TestHbase.catalog.refreshTable(TableIdentifier(tableName))
+    TestHbase.catalog.client.runSqlHive(s"DROP TABLE $tableName")
+    TestHbase.catalog.unregisterTable(Seq(tableName))
+  }
+
   def dropNativeHbaseTable(tableName: String) = {
     try {
       val hbaseAdmin = TestHbase.hbaseAdmin
@@ -172,5 +179,13 @@ abstract class TestBase
     // then load data into table
     val loadSql = s"LOAD PARALL DATA LOCAL INPATH '$loadFile' INTO TABLE $tableName"
     runSql(loadSql)
+  }
+
+  def printRows(rows: Array[Row]) = {
+    println("======= QUERY RESULTS ======")
+    for (i <- rows.indices) {
+      println(rows(i).mkString(" | "))
+    }
+    println("============================")
   }
 }

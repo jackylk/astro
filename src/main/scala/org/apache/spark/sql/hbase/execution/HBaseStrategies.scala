@@ -19,13 +19,16 @@ package org.apache.spark.sql.hbase.execution
 
 import org.apache.hadoop.hbase.util.Bytes
 import org.apache.spark.rdd.RDD
+import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.expressions._
 import org.apache.spark.sql.catalyst.planning.PhysicalOperation
 import org.apache.spark.sql.catalyst.plans.logical
+import org.apache.spark.sql.catalyst.plans.logical
 import org.apache.spark.sql.catalyst.plans.logical.LogicalPlan
 import org.apache.spark.sql.execution.{Project, SparkPlan}
+import org.apache.spark.sql.hbase.catalyst.{logical => hbaseLogical}
 import org.apache.spark.sql.hbase.{HBasePartition, HBaseRawType, HBaseRelation, KeyColumn}
-import org.apache.spark.sql.sources.LogicalRelation
+import org.apache.spark.sql.execution.datasources.LogicalRelation
 import org.apache.spark.sql.types._
 import org.apache.spark.sql.{SQLContext, Strategy, execution}
 
@@ -43,13 +46,12 @@ private[hbase] trait HBaseStrategies {
         if groupingExpressions.nonEmpty &&
           canBeAggregatedForAll(groupingExpressions, aggregateExpressions, child) =>
           val withCodeGen = canBeCodeGened(allAggregates(aggregateExpressions)) && codegenEnabled
-          if (withCodeGen) execution.GeneratedAggregate(
+          if (withCodeGen) execution.Aggregate(
             // In this case, 'partial = true' doesn't mean it is partial, actually, it is not.
             // We made it to true to avoid adding Exchange operation.
             partial = true,
             groupingExpressions,
             aggregateExpressions,
-            self.sqlContext.conf.unsafeEnabled,
             planLater(child)) :: Nil
           else execution.Aggregate(
             // In this case, 'partial = true' doesn't mean it is partial, actually, it is not.
@@ -60,12 +62,18 @@ private[hbase] trait HBaseStrategies {
             planLater(child)) :: Nil
 
       case PhysicalOperation(projectList, inPredicates,
-      l@LogicalRelation(relation: HBaseRelation)) =>
+        l@LogicalRelation(relation: HBaseRelation)) =>
         pruneFilterProjectHBase(
           l,
           projectList,
           inPredicates,
           (a, f) => relation.buildScan(a, f)) :: Nil
+
+      case hbaseLogical.UpdateTable(tableName, columnsToUpdate, values, child) =>
+        UpdateTable(tableName, columnsToUpdate, values, planLater(child)) :: Nil
+
+      case hbaseLogical.DeleteFromTable(tableName, child) =>
+        DeleteFromTable(tableName, planLater(child)) :: Nil
 
       case _ => Nil
     }
@@ -178,7 +186,7 @@ private[hbase] trait HBaseStrategies {
                                           projectList: Seq[NamedExpression],
                                           filterPredicates: Seq[Expression],
                                           scanBuilder:
-                                          (Seq[Attribute], Seq[Expression]) => RDD[Row]) = {
+                                          (Seq[Attribute], Seq[Expression]) => RDD[InternalRow]) = {
 
       val projectSet = AttributeSet(projectList.flatMap(_.references))
       val filterSet = AttributeSet(filterPredicates.flatMap(_.references))
